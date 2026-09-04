@@ -779,6 +779,8 @@ async def api_onboarding_complete(request: Request) -> JSONResponse:
     from ouroboros.config import get_runtime_mode, normalize_runtime_mode
     from ouroboros.utils import utc_now_iso
 
+    log.info("onboarding complete: request body received")
+
     try:
         body = await request.json()
     except Exception:
@@ -801,6 +803,7 @@ async def api_onboarding_complete(request: Request) -> JSONResponse:
     old_settings, current, error = _prepared_settings(body)
     if error:
         return unsaved_error(error, 400)
+    log.info("onboarding complete: settings prepared")
 
     subscriptions_connected, skip_presets = parse_subscription_intent(body)
     eligible = preset_eligible(old_settings)
@@ -863,12 +866,14 @@ async def api_onboarding_complete(request: Request) -> JSONResponse:
     pending_mode = normalize_runtime_mode(current.get("OUROBOROS_RUNTIME_MODE"))
     active_mode = get_runtime_mode()
     boundary = CommitBoundary()
+    log.info("onboarding complete: before persist (pending_mode=%s)", pending_mode)
     try:
         await asyncio.to_thread(
             _persist, request, old_settings, current, pending_mode, safety_light,
             install_preset_applied, boundary, read_fingerprint,
         )
     except Exception as exc:
+        log.info("onboarding complete: persist raised %s: %s", type(exc).__name__, exc)
         if boundary.committed:
             # The transaction LANDED; a post-save step did not. Saying
             # "nothing was saved" here would send the owner back through an
@@ -889,6 +894,7 @@ async def api_onboarding_complete(request: Request) -> JSONResponse:
         log.exception("onboarding completion failed")
         return unsaved_error(f"{type(exc).__name__}: {exc}", 500)
 
+    log.info("onboarding complete: persisted ok")
     _owner_audit(request, "onboarding_complete", {
         "runtime_mode": pending_mode,
         "preset": preset_reason,

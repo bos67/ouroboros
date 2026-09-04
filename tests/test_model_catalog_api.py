@@ -150,6 +150,38 @@ def test_model_catalog_registers_openai_compatible_base_url_without_key(monkeypa
     }
 
 
+def test_openai_compatible_fetch_reads_items_shaped_catalog():
+    """Some compatible servers answer {total, items} instead of {object, data}.
+
+    The fetcher must read ``items`` (and page-walk with offset/limit when the
+    first page is smaller than ``total``) so the owner's configured model does
+    not hide on a page the caller never opened.
+    """
+    calls = []
+
+    class Client:
+        async def get(self, url, **kwargs):
+            params = kwargs.get("params") or {}
+            offset = int(params.get("offset", 0))
+            limit = int(params.get("limit", 100))
+            calls.append((params.get("offset"), params.get("limit")))
+            ids = [f"model-{i}" for i in range(offset, min(offset + limit, 150))]
+            return _Response({"total": 150, "items": [{"id": mid} for mid in ids]})
+
+    models = asyncio.run(model_catalog_api._fetch_openai_compatible_model_catalog(
+        Client(), "openai-compatible", "OpenAI-compatible", "", "https://compat.example/v1/"
+    ))
+
+    values = [m["value"] for m in models]
+    assert len(models) == 150
+    assert values[0] == "openai-compatible::model-0"
+    assert values[-1] == "openai-compatible::model-149"
+    # The page-walk issued a follow-up request with an explicit offset (the
+    # very first call carries no params), and the first call was unparameterized.
+    assert any(isinstance(call[0], (int, str)) for call in calls)
+    assert calls[0] == (None, None)
+
+
 def test_openai_compatible_model_fetch_omits_blank_bearer_header():
     captured = {}
 

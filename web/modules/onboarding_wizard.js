@@ -1227,11 +1227,29 @@ import { installAltMenuSuppression, installDesktopShellLinkInterceptor } from '.
         // The atomic completion (D-8): server-side fresh-install proof, the
         // structural provider gate, optional agent-preset compilation, a single
         // persist, then supervisor start.
-        const response = await fetch(ONBOARDING_COMPLETE_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
+        const COMPLETION_TIMEOUT_MS = 120_000;
+        let response;
+        let timer;
+        try {
+            const racing = new Promise((resolve, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(
+                        'The server did not confirm the save within '
+                        + `${Math.round(COMPLETION_TIMEOUT_MS / 1000)} seconds. `
+                        + 'Reload this page; if setup is still shown, finish it again.',
+                    )),
+                    COMPLETION_TIMEOUT_MS,
+                );
+                fetch(ONBOARDING_COMPLETE_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                }).then(resolve, reject);
+            });
+            response = await racing;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
         // A body that will not parse is UNKNOWN, not empty. Substituting `{}`
         // made a 200 carrying HTML (a proxy error page, a login redirect) look
         // like a completion, and `{}` being truthy meant the caller announced
@@ -1289,15 +1307,27 @@ import { installAltMenuSuppression, installDesktopShellLinkInterceptor } from '.
         state.saving = true;
         state.error = '';
         render();
-        const payload = {
-            // Observations are not authority: the endpoint re-proves eligibility.
-            subscriptionsConnected: state.agentsConnected.length > 0,
-            skipSubscriptionPresets: state.skipSubscriptionPresets,
-            ...onboardingSettingsDraft({ state, providerFields: PROVIDER_FIELDS, budgetFields: BUDGET_FIELDS, modelSlots: MODEL_SLOTS, trim }),
-            // Completion validates this visible draft and never replaces it.
-            OUROBOROS_SUBAGENTS: agentsStep?.availableSubagents
-                || state.availableSubagents,
-        };
+        // A client-side failure while ASSEMBLING the draft (not while saving it)
+        // must not leave the button stuck on "Saving...": drop the flag and put
+        // the real reason on the wizard instead of a spinner that never returns.
+        let payload;
+        try {
+            payload = {
+                // Observations are not authority: the endpoint re-proves eligibility.
+                subscriptionsConnected: (state.agentsConnected || []).length > 0,
+                skipSubscriptionPresets: state.skipSubscriptionPresets,
+                ...onboardingSettingsDraft({ state, providerFields: PROVIDER_FIELDS, budgetFields: BUDGET_FIELDS, modelSlots: MODEL_SLOTS, trim }),
+                // Completion validates this visible draft and never replaces it.
+                OUROBOROS_SUBAGENTS: agentsStep?.availableSubagents
+                    || state.availableSubagents,
+            };
+        } catch (error) {
+            state.saving = false;
+            state.error = 'Could not prepare the settings to save: '
+                + String(error?.message || error) + ' Reload the page and try again.';
+            render();
+            return;
+        }
         try {
             await saveWizardPayload(payload);
         } catch (error) {

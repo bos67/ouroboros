@@ -27,6 +27,10 @@ from ouroboros.provider_models import (
 log = logging.getLogger(__name__)
 
 _CATALOG_HTTP_TIMEOUT_SEC = 20.0
+# Page-walking bound for paginated ``items``-shaped compatible catalogs: fetch
+# at most this many extra pages of _CATALOG_PAGE_SIZE models before giving up.
+_CATALOG_PAGE_WALK_LIMIT = 20
+_CATALOG_PAGE_SIZE = 100
 
 
 def _provider_label_from_model_id(model_id: str) -> str:
@@ -119,7 +123,56 @@ async def _fetch_openai_compatible_model_catalog(
     )
     response.raise_for_status()
     data = response.json()
-    raw_models = data.get("data", []) or []
+    # Accept both the OpenAI-standard envelope (``data``) and the page-shaped
+    # envelope some compatible servers use (``items`` alongside ``total``) so a
+    # catalog is not silently empty for endpoints that do not speak ``data``.
+    raw_models = data.get("data")
+    items_shaped = not isinstance(raw_models, list)
+    if items_shaped:
+        raw_models = data.get("items")
+    raw_models = raw_models or []
+
+    # A page-shaped catalog that claims more models than the first page returned
+    # is paginated (``?offset``/``?limit``). Walk the remaining pages so the
+    # owner's configured model is actually listed instead of hiding on a page
+    # the caller never opened. A hardcap bounds the fan-out on large catalogs;
+    # standard OpenAI-compatible servers ignore the extra query parameters.
+    total = data.get("total")
+    if items_shaped and isinstance(total, int) and total > 0 and len(raw_models) < total:
+        seen = set()
+        for item in raw_models:
+            mid = str(item.get("id", "") or "").strip()
+            if mid:
+                seen.add(mid)
+        page = 0
+        while len(raw_models) < total and page < _CATALOG_PAGE_WALK_LIMIT:
+            try:
+                page_response = await client.get(
+                    f"{api_root}/models",
+                    headers=headers,
+                    params={"offset": len(raw_models), "limit": _CATALOG_PAGE_SIZE},
+                )
+                page_response.raise_for_status()
+                page_data = page_response.json()
+                page_models = page_data.get("data")
+                if not isinstance(page_models, list):
+                    page_models = page_data.get("items")
+                if not isinstance(page_models, list) or not page_models:
+                    break
+                added = 0
+                for item in page_models:
+                    mid = str(item.get("id", "") or "").strip()
+                    if not mid or mid in seen:
+                        continue
+                    seen.add(mid)
+                    raw_models.append(item)
+                    added += 1
+                if added == 0:
+                    break
+                page += 1
+            except Exception:
+                # Keep whatever pages landed; a partial catalog is better than none.
+                break
 
     models: list[dict[str, str]] = []
     for item in raw_models:
