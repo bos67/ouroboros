@@ -484,7 +484,10 @@ def test_wizard_declares_the_subscription_intent_the_endpoint_expects():
     setup contract names, and the owner's explicit escape hatch has a button."""
     source = (REPO / "web/modules/onboarding_wizard.js").read_text(encoding="utf-8")
 
-    assert f"{SUBSCRIPTIONS_CONNECTED_FIELD}: state.agentsConnected.length > 0" in source
+    assert (
+        f"{SUBSCRIPTIONS_CONNECTED_FIELD}: (state.agentsConnected || []).length > 0"
+        in source
+    )  # defensive access added when the wizard's shared store could emit a null roster
     assert f"{SKIP_SUBSCRIPTION_PRESETS_FIELD}: state.skipSubscriptionPresets" in source
     assert 'id="skip-presets-btn"' in source
     assert "Finish without subscription presets" in source

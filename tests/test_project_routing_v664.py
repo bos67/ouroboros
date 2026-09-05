@@ -475,6 +475,13 @@ def test_project_room_decision_turn_carries_last_task_result_ground_truth(tmp_pa
         objective="scaffold the racer", result="RAW TEXT MUST NOT LEAK",
         ts="2026-08-10T00:00:01Z",
     )
+    # The scanner orders by mtime (ts is a stored field, not the file mtime),
+    # and same-tick writes can share one mtime, so pin old1 to an earlier mtime
+    # via os.utime — new1 is written after it and gets a naturally newer one.
+    # Without this the test is a same-tick lottery. (other1 never matches the
+    # scan: it belongs to project "boat", so its mtime is irrelevant.)
+    import os
+    os.utime(tmp_path / "task_results" / "old1.json", (1736476801.0, 1736476801.0))
     write_task_result(
         tmp_path, "new1", "completed", project_id="racer",
         objective="build the racer", result="RAW TEXT MUST NOT LEAK",
