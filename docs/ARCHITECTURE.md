@@ -1,4 +1,4 @@
-# Ouroboros v6.114.2 — Architecture & Reference
+# Ouroboros v6.115.0 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -6,7 +6,7 @@ This document is the current operational map of Ouroboros: structure, data flows
 
 ---
 
-# Ouroboros v6.114.2 — Architecture & Reference
+# Ouroboros v6.115.0 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -150,7 +150,7 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       ├── context_fit.py ← Main task-local fit authority: Max/Low projections from one immutable core
       ├── context_budget.py ← Context-window budget vocabulary + typed reclaim SSOT
       ├── capability_evidence.py ← Sourced, route-fingerprinted context-window EVIDENCE
-      ├── context_layout.py ← Reference-document form SSOT (Architecture full/Max, nav map/Low)
+      ├── context_layout.py ← Reference-doc form SSOT (Max: ARCHITECTURE class-scoped — self-body full, direct-chat/external nav map + pointer; Low: nav map for every class)
       ├── context_compaction.py ← Requested complete-input reclaim materializer; transactional apply
       ├── context_health.py ← Leaf owner of health-invariant assembly + probes; re-exports `build_health_invariants`
       ├── headless.py ← Headless task child-drive isolation, workspace patch artifacts, memory export
@@ -987,7 +987,7 @@ For delegated profiles, the URL, route, private-range, and control-plane guards 
 #### Context fitting, retry, and compaction
 
 - `config.get_context_mode()` is the effective Main sizing/rendering source; `config.get_owner_context_mode()` is the persistent owner-intent/P3 source; they differ only in the auto-Low compatibility window, where bare env Low sizes Main as Low but remains owner Max absent an explicit false-provenance tombstone.
-- `context_layout.py` owns the reference-form projection: in Max, `ARCHITECTURE.md` is full-resident for every task class (the capability/tools/access map); in Low it is replaced by its lossless navigation map. `DEVELOPMENT.md` is mode-independent: full when the active repository binding targets Ouroboros's own body, otherwise a visible on-demand pointer (external workspace, project tree, subagent, API/CLI/scheduled surface). Project membership is not the signal; `workspace="none"` retains the handbook; evolution and self-body work retain it; `context_requires_development` and `context_requires_self_body_docs` override. Context economy comes from dropping the self-engineering handbook for external work, never from hiding the capability map in Max.
+- `context_layout.py` owns the reference-form projection: in Max, `ARCHITECTURE.md` is class-scoped (v6.115.0, owner decision) — full-resident for self-body classes (default-lane pooled tasks, evolution, self-body work) and replaced by its lossless H2-H4 navigation map plus a visible on-demand pointer for direct-chat turns and externally-bound classes (external workspace, project tree, subagent, API/CLI/scheduled surface); in Low it is the navigation map for every class. `DEVELOPMENT.md` is mode-independent: full when the active repository binding targets Ouroboros's own body, otherwise a visible on-demand pointer (external workspace, project tree, subagent, API/CLI/scheduled surface). Project membership is not the signal; `workspace="none"` retains the handbook and keeps ARCHITECTURE full (no external binding); evolution and self-body work retain both; `context_requires_development` and `context_requires_self_body_docs` override. Context economy comes from dropping the self-engineering handbook for external work and, in Max, from relocating the capability map for classes that never open it — the nav map + named pointer is a lossless relocation, never a silent truncation.
 - `context_fit.py` renders Max and Low projections from one immutable core and measures each candidate on one labelled density basis against the selected route capacity. Owner Low has an elastic 200K total-context economy target; crossing it is never a synthetic failure. With unknown capacity, owner Max gets one honest Max call, while owner Low may reclaim toward its known target before best effort.
 - Predicted Max pressure retains the Max document projection and may request one deficit-sized mutable-history pass; only an actual provider overflow authorizes task-local Low, after which one same-route semantic recovery is permitted only when the final post-transform candidate has the same route, round, and response reserve and strictly fewer context-bearing bytes. Owner mode and P3 applicability never change; P3 commit/scope review keeps its separate fit and oversize policy.
 - `context_compaction.py` is a requested materializer, not a second threshold/timer/retry authority. Pure selection picks a positive-reclaim prefix of completed assistant-call plus contiguous matching-result units; owner turns and malformed, interrupted, or visually opaque units remain verbatim. A non-empty selection first writes an exact private checkpoint, then summarizes complete gap-free hashed map/fold input; independent covered units may apply while a failed unit stays raw. Recompactable host-only capsules retain generation, lineage, and checkpoint/CAS refs and are stripped from physical candidates. Selection and receipts use the caller's exact density plus the same bounded image projection as ContextFit. No eligible positive reclaim means no checkpoint, summarizer call, or transcript mutation; the one route+round latch prevents repeating the same automatic pass without a hysteresis timer.

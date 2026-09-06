@@ -1,10 +1,14 @@
 """Tests for the low/max reference-doc layout in the always-on agent context.
 
 Doc matrix (D-ARCH unification, owner 2026-08-08):
-  ARCHITECTURE follows the OWNER MODE alone: full in max for EVERY task class
-       (self-body, project tasks with or without a folder, evolution, external
-       surfaces); navigation map in low. It is Ouroboros's capability/tools/
-       access map — never dropped per-task in max.
+  ARCHITECTURE residency in owner-max is CLASS-SCOPED (v6.115.0, owner
+       decision): full for self-body classes (pooled/evolution/self-body);
+       lossless H2-H4 navigation map + visible on-demand pointer for
+       direct-chat turns and externally-bound surfaces (external workspaces,
+       project trees, subagents, external api/cli/scheduled surfaces). In low
+       the navigation map stays the form for EVERY class. It remains
+       Ouroboros's capability/tools/access map — the relocation never
+       truncates: non-resident classes can read any section on demand.
   DEVELOPMENT is MODE-INDEPENDENT per task class, keyed by D-DEV (owner
        2026-08-08) on the ACTIVE REPO BINDING — the handbook loads exactly when
        the work targets Ouroboros's own body, a path fact and never a guess from
@@ -320,9 +324,11 @@ def test_named_owner_source_resolves_beyond_automatic_recent_generations():
 
 
 def test_max_mode_external_workspace_keeps_arch_full_but_drops_development():
-    """D-ARCH: ARCHITECTURE is full-resident in max for EVERY class, including
-    the external-surface class; DEVELOPMENT (the self-engineering handbook)
-    is the on-demand pointer there — external work targets OTHER codebases."""
+    """v6.115.0 (owner decision): the external-surface class (a bound
+    workspace / external api/cli/scheduled source) lands in the ARCH nav class
+    in owner-max — the lossless nav map + visible pointer replaces the full
+    body — while DEVELOPMENT (the self-engineering handbook) stays the
+    on-demand pointer there: external work targets OTHER codebases."""
     from ouroboros.contracts.task_contract import build_task_contract
 
     external = _build_system_text(
@@ -334,9 +340,9 @@ def test_max_mode_external_workspace_keeps_arch_full_but_drops_development():
         },
         context_mode="max",
     )
-    assert "## ARCHITECTURE.md" in external
-    assert _ARCH_BODY_SENTINEL in external  # capability map stays resident
-    assert "navigation map" not in external
+    assert "navigation map" in external  # lossless class-aware form (v6.115.0)
+    assert _ARCH_BODY_SENTINEL not in external  # full body NOT inlined
+    assert "docs/ARCHITECTURE.md" in external  # named in the pointer (P1)
     assert "## DEVELOPMENT.md" not in external  # handbook is the pointer
     assert "DEVELOPMENT.md" in external  # ...but visibly named (P1)
 
@@ -350,7 +356,10 @@ def test_max_mode_external_workspace_keeps_arch_full_but_drops_development():
         },
         context_mode="max",
     )
+    # v6.115.0: the explicit self-body flag overrides the external class and
+    # restores FULL ARCHITECTURE residency in max (DEV unchanged: full).
     assert _ARCH_BODY_SENTINEL in self_body
+    assert "navigation map" not in self_body
     assert "## DEVELOPMENT.md" in self_body  # explicit self-body keeps DEV full
 
     contract = build_task_contract({
@@ -416,17 +425,26 @@ def test_development_keys_on_the_repo_binding_not_project_membership():
         {"project_id": "proj_sub", "workspace_root": "/tmp/proj-tree", "workspace_mode": "external"},
         context_mode="max",
     )
-    assert _ARCH_BODY_SENTINEL in folder_max  # ARCH full in max, always
+    # v6.115.0 (owner decision): a folder-bound external task is in the ARCH
+    # nav class in max — the full body is replaced by the lossless nav map and
+    # the doc is named in the visible on-demand pointer. (This deliberately
+    # inverts the pre-6.115.0 always-full-in-max assertion.)
+    assert _ARCH_BODY_SENTINEL not in folder_max
+    assert "navigation map" in folder_max
+    assert "docs/ARCHITECTURE.md" in folder_max  # named in the pointer (P1)
     assert "## DEVELOPMENT.md" not in folder_max
     assert "DEVELOPMENT.md" in folder_max  # named in the on-demand pointer
 
-    # A direct-chat turn in a PROJECT ROOM binds no workspace: still Ouroboros's
-    # own body, so it KEEPS the handbook. This is the case the project_id-keyed
-    # draft got wrong.
+    # A direct-chat turn in a PROJECT ROOM binds no workspace: it keeps the
+    # DEVELOPMENT handbook (D-DEV, unchanged) and — v6.115.0 (owner decision) —
+    # sits in the ARCH nav class in max: nav map + pointer instead of the full
+    # body.
     room_chat_max = _build_system_text(
         {"project_id": "proj_sub", "_is_direct_chat": True}, context_mode="max"
     )
-    assert _ARCH_BODY_SENTINEL in room_chat_max
+    assert _ARCH_BODY_SENTINEL not in room_chat_max
+    assert "navigation map" in room_chat_max
+    assert "docs/ARCHITECTURE.md" in room_chat_max  # pointer entry (P1)
     assert "## DEVELOPMENT.md" in room_chat_max
     room_chat_low = _build_system_text(
         {"project_id": "proj_sub", "_is_direct_chat": True}, context_mode="low"
@@ -435,11 +453,13 @@ def test_development_keys_on_the_repo_binding_not_project_membership():
     assert _ARCH_BODY_SENTINEL not in room_chat_low
     assert "## DEVELOPMENT.md" in room_chat_low
 
-    # workspace="none" binds nothing -> the task is not external -> keeps it.
+    # workspace="none" binds nothing -> the task is not external -> keeps it,
+    # and (v6.115.0) it is a pooled self-body class: ARCH stays FULL in max.
     opt_out = _build_system_text(
         {"project_id": "proj_sub", "workspace": "none"}, context_mode="max"
     )
     assert "## DEVELOPMENT.md" in opt_out
+    assert _ARCH_BODY_SENTINEL in opt_out
 
     # Evolution / self-body keep it through the self-body branch even in a room.
     evolution = _build_system_text(
@@ -464,6 +484,9 @@ def test_development_keys_on_the_repo_binding_not_project_membership():
         context_mode="max",
     )
     assert "## DEVELOPMENT.md" in explicit_self_body
+    # v6.115.0: the explicit self-body flag also restores FULL ARCHITECTURE
+    # residency in max (its existing DEVELOPMENT effect is unchanged).
+    assert _ARCH_BODY_SENTINEL in explicit_self_body
     explicit_off = _build_system_text(
         {"project_id": "proj_sub", "context_requires_development": False}, context_mode="max"
     )
@@ -502,6 +525,41 @@ def test_low_mode_development_full_for_direct_chat_tasks_unless_explicitly_disab
     )
     assert "## DEVELOPMENT.md" not in pure_chat_text
     assert "DEVELOPMENT.md" in pure_chat_text  # but named in the on-demand pointer
+
+
+def test_v6115_architecture_class_matrix_in_max():
+    """v6.115.0 (owner decision): the exhaustive owner-max class matrix for
+    ARCHITECTURE residency. External surfaces (subagent delegation role,
+    api/cli/scheduled source, actor) and direct-chat turns land in the nav
+    class (nav map + pointer); default-lane pooled tasks and unknown shapes
+    keep FULL (conservative default). Explicit
+    context_requires_self_body_docs=False forces the nav class on a pooled
+    task."""
+    sub_text = _build_system_text({"delegation_role": "subagent"}, context_mode="max")
+    assert _ARCH_BODY_SENTINEL not in sub_text
+    assert "navigation map" in sub_text
+    assert "docs/ARCHITECTURE.md" in sub_text  # pointer entry (P1)
+
+    for source in ("api_task", "cli", "scheduled_task", "skill_scheduled_task"):
+        text = _build_system_text({"metadata": {"source": source}}, context_mode="max")
+        assert _ARCH_BODY_SENTINEL not in text, source
+        assert "navigation map" in text, source
+        assert "docs/ARCHITECTURE.md" in text, source
+
+    actor_text = _build_system_text({"metadata": {"actor_id": "cli"}}, context_mode="max")
+    assert _ARCH_BODY_SENTINEL not in actor_text
+    assert "navigation map" in actor_text
+
+    chat_text = _build_system_text({"_is_direct_chat": True}, context_mode="max")
+    assert _ARCH_BODY_SENTINEL not in chat_text
+    assert "navigation map" in chat_text
+
+    pooled_text = _build_system_text(context_mode="max")
+    assert _ARCH_BODY_SENTINEL in pooled_text
+
+    forced = _build_system_text({"context_requires_self_body_docs": False}, context_mode="max")
+    assert _ARCH_BODY_SENTINEL not in forced
+    assert "navigation map" in forced
 
 
 # Predicted route pressure no longer changes the document projection. The

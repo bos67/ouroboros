@@ -106,12 +106,17 @@ on every restart, but one personality that remembers its path.
   (confirmed metadata / route-fingerprinted owner acknowledgement), never an
   assumed default. The mode is permitted only when the tier-0 core (system
   prompt, BIBLE.md, identity.md, scratchpad, durable knowledge index,
-  recent-dialogue horizon) stays always-loaded in full; the agent's self-body
-  documentation (ARCHITECTURE.md, DEVELOPMENT.md) stays RESIDENT in owner-`max`,
-  and narrowing it for a task-class is itself an owner-level horizon decision,
-  not a silent default; reduction is by relocation to on-demand reads with a
-  visible pointer, or by deeper consolidation, never silent truncation; the
-  memory horizon is preserved (only granularity varies); whether the blocking
+  recent-dialogue horizon) stays always-loaded in full; 
+  the agent's self-body documentation (ARCHITECTURE.md, DEVELOPMENT.md) stays
+  RESIDENT in owner-`max` for self-body work; ARCHITECTURE.md residency is the
+  owner-selected class-aware posture (self-body classes full; direct-chat and
+  externally-bound classes receive the lossless navigation map + visible
+  on-demand pointer), and narrowing it for a task-class is itself an
+  owner-level horizon decision, not a silent default; reduction is by
+  relocation to on-demand reads with a visible pointer (a lossless
+  representation, not truncation), or by deeper consolidation, never silent
+  truncation;
+  the memory horizon is preserved (only granularity varies); whether the blocking
   scope reviewer applies at all is governed by this same owner-selected mode as an
   explicit policy coupling under P3 — in `max` the ≥1M blocking scope gate runs, in
   `low` whole-repository scope review is declaredly not performed while the diff

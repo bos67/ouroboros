@@ -158,3 +158,64 @@ def test_reference_doc_sections_decouple_arch_mode_from_dev_inclusion():
     low_no_dev = _render("low", False)
     assert "DEVBODY" not in low_no_dev
     assert "docs/DEVELOPMENT.md" in low_no_dev
+
+
+def _pointer_listing(text: str) -> str:
+    marker = "## Reference docs available on demand"
+    idx = text.find(marker)
+    return text[idx:] if idx >= 0 else ""
+
+
+def test_v6115_nav_class_in_max_gets_nav_map_and_pointer():
+    """v6.115.0: in owner-max the nav class (architecture_full=False) renders
+    the lossless navigation map AND names docs/ARCHITECTURE.md in the visible
+    on-demand pointer; the full class keeps the body with NO pointer entry;
+    low keeps its established form (nav map; the map's own read_file
+    instruction remains the disclosure — no new pointer entry)."""
+    arch = "## Arch A\n\nARCHBODY\n"
+    dev = "## Dev A\n\nDEVBODY\n"
+
+    def _render(mode, full):
+        return "\n\n".join(cl.reference_doc_sections(
+            None,
+            context_mode=mode,
+            include_development=True,
+            architecture_full=full,
+            architecture_text=arch,
+            development_text=dev,
+        ))
+
+    max_nav = _render("max", False)
+    assert "ARCHBODY" not in max_nav
+    assert "navigation map" in max_nav
+    assert "docs/ARCHITECTURE.md" in _pointer_listing(max_nav)
+
+    max_full = _render("max", True)
+    assert "ARCHBODY" in max_full
+    assert "docs/ARCHITECTURE.md" not in max_full  # no pointer entry when full
+
+    low_nav = _render("low", False)
+    assert "ARCHBODY" not in low_nav
+    assert "navigation map" in low_nav
+    assert "docs/ARCHITECTURE.md" not in _pointer_listing(low_nav)  # no new entry
+
+
+def test_v6115_architecture_context_section_is_class_scoped():
+    arch = "# T\n\n## A\n\nBODY\n"
+    full = cl.architecture_context_section(
+        None, context_mode="max", architecture_full=True, text=arch,
+    )
+    assert "BODY" in full
+    nav = cl.architecture_context_section(
+        None, context_mode="max", architecture_full=False, text=arch,
+    )
+    assert "BODY" not in nav
+    assert "navigation map" in nav
+    low = cl.architecture_context_section(
+        None, context_mode="low", architecture_full=True, text=arch,
+    )
+    assert "BODY" not in low
+    assert "navigation map" in low
+    # Default keeps non-task callers (consciousness governance) at full-in-max.
+    default = cl.architecture_context_section(None, context_mode="max", text=arch)
+    assert "BODY" in default

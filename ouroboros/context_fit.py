@@ -159,6 +159,11 @@ class ContextCore:
     dynamic_text: str
     user_content_json: str
     docs_need_development: bool
+    # v6.115.0 (owner decision): ARCHITECTURE.md full residency in owner-max is
+    # class-scoped. Captured once from structural task facts; low mode ignores
+    # it (the nav map stays the low form for every class). Default True keeps
+    # any constructor that predates the field at the documented full behavior.
+    architecture_full_resident: bool = True
 
 
 def _render_context_system_content(
@@ -167,17 +172,21 @@ def _render_context_system_content(
     *,
     mode: str,
 ) -> List[Dict[str, Any]]:
-    # D-ARCH (owner, 2026-08-08): the reference-doc form follows the RENDERED
-    # mode directly — ARCHITECTURE is full in max for every task class and the
-    # nav map in low; DEVELOPMENT inclusion is the caller's mode-independent
-    # decision carried on the core (the former per-task force_low_docs lever is
-    # gone: workspace binding no longer shapes the docs).
+    # D-ARCH (owner, 2026-08-08; class-scoped amendment v6.115.0): the
+    # reference-doc form follows the RENDERED mode plus the task class carried
+    # on the core — in owner-max ARCHITECTURE is full for self-body classes and
+    # the nav map + on-demand pointer for direct-chat/external classes; the nav
+    # map stays the low form for every class. DEVELOPMENT inclusion is the
+    # caller's mode-independent decision carried on the core (the former
+    # per-task force_low_docs lever is gone: workspace binding no longer shapes
+    # the docs).
     static_parts = [core.base_prompt, "## BIBLE.md\n\n" + core.bible_md]
     static_parts.extend(
         reference_doc_sections(
             env,
             context_mode=mode,
             include_development=core.docs_need_development,
+            architecture_full=core.architecture_full_resident,
             architecture_text=core.architecture_md,
             development_text=core.development_md,
         )

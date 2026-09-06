@@ -252,6 +252,35 @@ def _task_uses_external_context(task: Dict[str, Any]) -> bool:
     return False
 
 
+def _task_architecture_full_resident(task: Dict[str, Any]) -> bool:
+    """v6.115.0 (owner decision): does THIS task class keep ARCHITECTURE.md
+    full-resident in owner-max?
+
+    Exhaustive precedence table — every task dict resolves to exactly one
+    class, and unknown/malformed shapes default to FULL (the conservative
+    direction: today's behavior for anything the enumerated signals do not
+    cover):
+
+      1. explicit ``context_requires_self_body_docs`` (task or task_contract)
+         wins in BOTH directions;
+      2. externally-bound surfaces (``_task_uses_external_context``: a bound
+         workspace — including a project task's auto-provisioned genesis tree —
+         a subagent, or an external api/cli/scheduled surface) → navigation map;
+      3. direct-chat turns (``_is_direct_chat``, owner-confirmed nav class) →
+         navigation map;
+      4. otherwise (default-lane pooled tasks, evolution, deep self-review,
+         review, unknown shapes) → FULL.
+    """
+    explicit = _explicit_self_body_docs_flag(task)
+    if explicit is not None:
+        return explicit
+    if _task_uses_external_context(task):
+        return False
+    if bool(task.get("_is_direct_chat")):
+        return False
+    return True
+
+
 def _scheduled_tasks_digest(env: Any, *, limit: int = 8) -> Optional[Dict[str, Any]]:
     """Compact digest of active schedules (cron + one-shot) for task/consciousness
     context. Keeps the agent aware of standing schedules without inlining the full
@@ -1349,24 +1378,24 @@ def _capture_context_core(
     from ouroboros.project_facts import resolve_project_id
 
     # ------------------------------------------------------------------ #
-    # Reference-doc forms (D-ARCH unification, owner decision 2026-08-08).
+    # Reference-doc forms (D-ARCH unification, owner decision 2026-08-08;
+    # class-scoped amendment v6.115.0).
     #
-    # ARCHITECTURE.md follows the OWNER CONTEXT MODE alone: full-resident in
-    # max for EVERY task class — self-body, PROJECT tasks (with or without a
-    # folder), evolution, external/headless/delegated surfaces — and the
-    # lossless navigation map in low. OWNER'S MOTIVATION (recorded verbatim-in-
-    # spirit so it is not lost): architecture.md is Ouroboros's capability/
-    # tools/access map; it stays resident in max even for project/evolution
-    # work because without it the agent cannot reason about HOW to work
-    # effectively — context economy comes from dropping DEVELOPMENT.md for
-    # project work, never ARCHITECTURE. This removed the former max-mode
-    # ARCH→nav-map downgrade for the external-surface class (v6.17.0) and for
-    # evolution (v6.30.0); in low mode ARCH stays the nav map (the cheap mode).
+    # ARCHITECTURE.md residency in owner-max is now CLASS-SCOPED (owner
+    # decision): self-body classes keep the full document; direct-chat turns
+    # and externally-bound surfaces (external workspaces, project trees,
+    # subagents, external api/cli/scheduled surfaces) receive the lossless
+    # H2-H4 navigation map plus a visible on-demand pointer — a relocation,
+    # never truncation (BIBLE P1). OWNER'S MOTIVATION, superseding the 2026-08-08
+    # always-full posture: after the doc was compressed 688K→422K it still cost
+    # ~105K resident tokens on every call for classes that never open the map
+    # (e.g. a currency-rate chat); the class boundary reuses the D-DEV
+    # structural signals. In low mode ARCH stays the nav map for every class
+    # (the cheap mode).
     #
-    # DEVELOPMENT.md (the self-engineering handbook) is what adapts, MODE-
-    # INDEPENDENTLY — the doc decision is deliberately DECOUPLED from workspace
-    # binding for ARCHITECTURE (binding a workspace fixes paths/tool profile/
-    # lease, it must not drag the capability map out of context in max).
+    # DEVELOPMENT.md (the self-engineering handbook) keeps its D-DEV decision
+    # unchanged and MODE-INDEPENDENT — the doc decision remains deliberately
+    # DECOUPLED from the ARCHITECTURE class flag.
     #
     # D-DEV (owner decision, 2026-08-08). OWNER'S MOTIVATION, recorded here so it
     # is not lost: "DEVELOPMENT.md is the self-engineering handbook; it loads
@@ -1398,6 +1427,11 @@ def _capture_context_core(
         docs_need_development = False
     else:
         docs_need_development = _task_requires_development_context(task)
+
+    # v6.115.0 (owner decision): the ARCHITECTURE.md owner-max residency class,
+    # computed once from the same structural facts (exhaustive precedence table
+    # in _task_architecture_full_resident; unknown shapes default to FULL).
+    arch_full_resident = _task_architecture_full_resident(task)
 
     semi_stable_parts = []
     try:
@@ -1523,6 +1557,7 @@ def _capture_context_core(
             build_user_content(task), ensure_ascii=False, sort_keys=True,
         ),
         docs_need_development=docs_need_development,
+        architecture_full_resident=arch_full_resident,
     )
 
 

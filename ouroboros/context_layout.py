@@ -11,18 +11,22 @@ Doc matrix (agent cognition surfaces; D-ARCH unification, owner 2026-08-08):
   | doc            | max            | low                                   |
   |----------------|----------------|---------------------------------------|
   | SYSTEM / BIBLE | full (tier-0; caller-owned, never varied here)              |
-  | ARCHITECTURE   | full — ALWAYS, every task class | navigation map (full sections on demand) |
+  | ARCHITECTURE   | full for self-body classes; nav map + on-demand pointer for direct-chat/external classes | navigation map (full sections on demand) |
   | DEVELOPMENT    | full when the caller includes dev context, else pointer — MODE-INDEPENDENT |
   | README         | on-demand pointer (removed from always-on for all modes)     |
   | CHECKLISTS     | on-demand pointer (reviewers load their own copy)            |
 
-ARCHITECTURE.md follows the OWNER CONTEXT MODE alone — no per-task downgrade.
-Owner's motivation (recorded so it is not lost): architecture.md is Ouroboros's
-capability/tools/access map; it stays resident in max even for project/evolution
-work because without it the agent cannot reason about HOW to work effectively —
-context economy comes from dropping DEVELOPMENT.md for project work, never
-ARCHITECTURE. DEVELOPMENT.md inclusion is the caller's per-task decision and is
-deliberately decoupled from the mode.
+ARCHITECTURE.md residency in owner-max is CLASS-SCOPED (v6.115.0, owner
+decision): the full document stays resident for self-body classes (pooled/
+evolution/self-body work), while direct-chat turns and externally-bound
+surfaces (external workspaces, project trees, subagents, external api/cli/
+scheduled surfaces) receive the lossless H2-H4 navigation map plus a visible
+on-demand pointer — a relocation, never truncation (BIBLE P1). In low mode the
+nav map remains the form for every class. The caller computes the class from
+structural task facts (never message text) and passes ``architecture_full``;
+the default True keeps non-task callers (consciousness governance) at the
+documented full-in-max behavior. DEVELOPMENT.md inclusion is the caller's
+per-task decision and remains deliberately decoupled from the mode.
 
 D-DEV (owner decision, 2026-08-08) fixes what that per-task decision keys on:
 DEVELOPMENT.md is the self-engineering handbook, so it loads exactly when the
@@ -120,14 +124,24 @@ def architecture_context_section(
     env: Any,
     *,
     context_mode: str,
+    architecture_full: bool = True,
     text: str | None = None,
 ) -> str:
-    """ARCHITECTURE.md: full in max, navigation map in low. Empty if unreadable."""
+    """ARCHITECTURE.md form per mode and task class.
+
+    v6.115.0 (owner decision): full residency in owner-max is class-scoped —
+    self-body classes keep the full document; direct-chat turns and
+    externally-bound surfaces (external workspaces, project trees, subagents,
+    external api/cli/scheduled surfaces) get the lossless H2-H4 navigation map
+    plus a visible on-demand pointer. Low mode is unchanged: navigation map for
+    every class. The default ``architecture_full=True`` keeps non-task callers
+    (consciousness governance sections) at the documented full-in-max
+    behavior. Empty if unreadable."""
     if text is None:
         text = _read_doc(env, "docs/ARCHITECTURE.md")
     if not text.strip():
         return ""
-    if context_mode == "low":
+    if context_mode == "low" or not architecture_full:
         return generate_doc_nav_map(
             text, title="ARCHITECTURE.md", rel_path="docs/ARCHITECTURE.md"
         )
@@ -139,6 +153,7 @@ def reference_doc_sections(
     *,
     context_mode: str,
     include_development: bool,
+    architecture_full: bool = True,
     architecture_text: str | None = None,
     development_text: str | None = None,
 ) -> List[str]:
@@ -149,8 +164,10 @@ def reference_doc_sections(
     not inlined is named in a single visible on-demand pointer (P1: no silent
     omission).
 
-    ``context_mode`` is the OWNER context mode and decides only the ARCHITECTURE
-    form (full in max, nav map in low — D-ARCH, owner 2026-08-08).
+    ``context_mode`` is the OWNER context mode; together with
+    ``architecture_full`` it decides the ARCHITECTURE form (v6.115.0: full for
+    self-body classes / nav map + on-demand pointer for the direct-chat and
+    external classes in max; nav map for every class in low).
     ``include_development`` is the caller's mode-independent decision whether the
     self-engineering handbook is inline (self-body/self-mod/evolution work) or an
     on-demand pointer (project tasks — folder or not — and external surfaces).
@@ -161,10 +178,17 @@ def reference_doc_sections(
     arch_section = architecture_context_section(
         env,
         context_mode=context_mode,
+        architecture_full=architecture_full,
         text=architecture_text,
     )
     if arch_section:
         parts.append(arch_section)
+        if context_mode != "low" and not architecture_full:
+            # v6.115.0: owner-max nav class — the nav map is disclosed a second
+            # time in the visible on-demand pointer (P1: named, never silent).
+            # Low keeps its established form (the nav map's own read_file
+            # instruction is the disclosure; no pointer entry).
+            on_demand.append("docs/ARCHITECTURE.md")
 
     dev_text = (
         development_text
