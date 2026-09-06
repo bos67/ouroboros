@@ -323,7 +323,7 @@ def test_named_owner_source_resolves_beyond_automatic_recent_generations():
     assert task["origin_message_text"] == text
 
 
-def test_max_mode_external_workspace_keeps_arch_full_but_drops_development():
+def test_max_mode_external_workspace_gets_arch_nav_map_but_drops_development():
     """v6.115.0 (owner decision): the external-surface class (a bound
     workspace / external api/cli/scheduled source) lands in the ARCH nav class
     in owner-max — the lossless nav map + visible pointer replaces the full

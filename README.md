@@ -12,7 +12,7 @@
 [![Linux](https://img.shields.io/badge/Linux-x86__64-orange.svg)](https://ouroboros-agent.ai/install/#linux)
 [![Windows](https://img.shields.io/badge/Windows-x64-blue.svg)][download-windows-x64]
 [![OuroborosHub](https://img.shields.io/badge/OuroborosHub-skills%20marketplace-8A2BE2.svg)](https://github.com/razzant/OuroborosHub)
-[![Version 6.115.0](https://img.shields.io/badge/version-6.115.0-green.svg)](VERSION)
+[![Version 6.115.1](https://img.shields.io/badge/version-6.115.1-green.svg)](VERSION)
 
 Ouroboros is an open-source, general-purpose AI agent whose identity, durable memory, and history continue across tasks and restarts. It works on external projects, coordinates a live swarm of specialist agents, and can rewrite the implementation it runs on, including its code, architecture, prompts, tools, and dependencies. Reflection can also change how it understands itself without severing that continuity.
 
@@ -64,13 +64,13 @@ The desktop packages already contain an optional CLI installer. On macOS, after 
 
 </details>
 
-[download-macos-arm64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/Ouroboros-6.115.0.dmg
-[download-windows-x64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/Ouroboros-6.115.0-windows-x64.zip
-[download-linux-deb-amd64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/ouroboros_6.115.0_amd64.deb
-[download-linux-rpm-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/ouroboros-6.115.0-1.x86_64.rpm
-[download-linux-rpm-red80-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/ouroboros-6.115.0-1.red80.x86_64.rpm
-[download-linux-appimage-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/Ouroboros-6.115.0-linux-x86_64.AppImage
-[download-linux-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.0/Ouroboros-6.115.0-linux-x86_64.tar.gz
+[download-macos-arm64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/Ouroboros-6.115.1.dmg
+[download-windows-x64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/Ouroboros-6.115.1-windows-x64.zip
+[download-linux-deb-amd64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/ouroboros_6.115.1_amd64.deb
+[download-linux-rpm-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/ouroboros-6.115.1-1.x86_64.rpm
+[download-linux-rpm-red80-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/ouroboros-6.115.1-1.red80.x86_64.rpm
+[download-linux-appimage-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/Ouroboros-6.115.1-linux-x86_64.AppImage
+[download-linux-x86_64]: https://github.com/razzant/ouroboros/releases/download/v6.115.1/Ouroboros-6.115.1-linux-x86_64.tar.gz
 
 Ouroboros bundles [Claudexor](https://github.com/razzant/claudexor) as its local execution layer for delegated coding and hosted-agent review. Ouroboros owns the task, memory, review, and final integration, while Claudexor runs the selected connected coding harness and returns durable execution evidence. [Explore Claudexor](https://claudexor.ai/).
 
@@ -450,6 +450,7 @@ and the reason.
 - **6.115.0 — 2026-09-06** — feat: class-aware ARCHITECTURE.md context residency (self-body full; direct-chat/external nav map + pointer).
 | Version | Date | Description |
 |---------|------|-------------|
+| 6.115.1 | 2026-09-06 | **fix: close the 6.115.0 advisory findings.** The DEVELOPMENT.md governance-table ARCHITECTURE.md cell now matches the class-aware residency paragraph from the same file; `architecture_full_resident` joins the ContextFit core fingerprint so direct-chat and pooled tasks with identical text no longer share a `core_sha256`; the external-workspace doc-context test is renamed to match the contract it pins; the duplicated title block at the top of docs/ARCHITECTURE.md (a stage-2 assembly artifact) is removed. |
 | 6.115.0 | 2026-09-06 | **feat: class-aware ARCHITECTURE.md context residency (owner decision).** In owner-Max the full operational map stays resident only for self-body classes (default-lane pooled tasks, evolution, self-body work); direct-chat turns and externally-bound work (external workspaces, project trees, subagents, API/CLI/scheduled surfaces) receive the existing lossless H2-H4 navigation map plus a visible on-demand pointer — a relocation, never truncation. Low mode unchanged; all review flows unchanged; DEVELOPMENT.md's own classifier unchanged; explicit `context_requires_self_body_docs` overrides in both directions; consciousness keeps full-in-max via the default. BIBLE.md P1 amended by one phrase (class residency of self-body docs = owner-selected posture; nav map + pointer = lossless representation). DEVELOPMENT.md context matrix and ARCHITECTURE.md §6 + §1 tree entry synced in the same commit; doc tests pin the class-dependent matrix (~105K resident tokens saved per call for never-opens-the-map classes). |
 | 6.114.2 | 2026-09-06 | **docs: ARCHITECTURE.md compression stage 2.** The operational map is compressed from 578 KB to 421 KB (−27%, cumulative −39% from the 688 KB original) per the owner-approved format. All 13 H2 sections, 35 H3 headings, and the 63 critical code/test identifiers survive; seventeen load-bearing identifiers lost to compression (IDENTITY_KINDS, ReviewPaidStamp, COST_OPENNESS_FIELDS, DecisionRequest/DecisionResponse, and others) are restored verbatim against the pre-compression backup. Version carriers synced to 6.114.2. |
 | 6.114.2 | 2026-09-05 | **docs: ARCHITECTURE.md compression stage 1.** The operational map is compressed from 688 KB to 578 KB (-16%) per the owner-approved format: keep current behaviour, invariants, names from code/tests, and one-phrase rationale; cut incident narrative (Poltergeist/GR tickets), was-X-now-Y stories, split-out-at-boundary history, and duplicated DEVELOPMENT.md content. All 13 H2 sections, 35 H3 headings, and every backtick-verified code/test identifier (2,684 checked) survive; the four-fence structure and section order are unchanged. A byte-exact pre-compression backup is retained on disk as docs/ARCHITECTURE.md.save_260905 for later stages. |

@@ -1,12 +1,4 @@
-# Ouroboros v6.115.0 — Architecture & Reference
-
-This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
-
-This document is the current operational map of Ouroboros: structure, data flows, APIs, protected boundaries, and the rationale for non-obvious architectural choices. Rationale must be self-contained here; future maintainers should not need to open old commits to understand why a guard, review gate, or lifecycle exists.
-
----
-
-# Ouroboros v6.115.0 — Architecture & Reference
+# Ouroboros v6.115.1 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 

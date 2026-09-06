@@ -518,6 +518,7 @@ def build_context_fit_plan(
             "dynamic_text": core.dynamic_text,
             "user_content": user_content,
             "docs_need_development": core.docs_need_development,
+            "architecture_full_resident": core.architecture_full_resident,
         },
         ensure_ascii=False,
         sort_keys=True,
