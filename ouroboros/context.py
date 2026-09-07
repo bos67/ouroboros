@@ -281,6 +281,33 @@ def _task_architecture_full_resident(task: Dict[str, Any]) -> bool:
     return True
 
 
+def _task_development_full_resident(task: Dict[str, Any]) -> bool:
+    """v6.116.0 (owner decision): does THIS task class keep DEVELOPMENT.md
+    full-resident in owner-max?
+
+    Same precedence skeleton as ``_task_architecture_full_resident`` (the
+    owner-approved mirror, lever №1 of the context campaign):
+
+      1. explicit ``context_requires_self_body_docs`` wins in BOTH directions;
+      2. direct-chat turns → navigation map + on-demand pointer (owner-confirmed
+         nav class for the handbook too);
+      3. externally-bound surfaces → True here, but harmless: the D-DEV block
+         keeps that class pointer-only via ``include_development=False``; a bare
+         pointer is the implemented external posture (no nav map added);
+      4. otherwise (pooled, evolution, review, unknown shapes) → FULL.
+
+    Only the rendered form of ``include_development=True`` branches depends on
+    this flag; an explicit ``context_requires_development=False`` still takes
+    the pointer-only path regardless.
+    """
+    explicit = _explicit_self_body_docs_flag(task)
+    if explicit is not None:
+        return explicit
+    if bool(task.get("_is_direct_chat")):
+        return False
+    return True
+
+
 def _scheduled_tasks_digest(env: Any, *, limit: int = 8) -> Optional[Dict[str, Any]]:
     """Compact digest of active schedules (cron + one-shot) for task/consciousness
     context. Keeps the agent aware of standing schedules without inlining the full
@@ -1428,6 +1455,19 @@ def _capture_context_core(
     else:
         docs_need_development = _task_requires_development_context(task)
 
+    # v6.116.0 (owner decision, mirror of the v6.115.0 ARCHITECTURE posture):
+    # the DEVELOPMENT.md owner-max rendered form is class-scoped — direct chat
+    # gets the lossless nav map + pointer; self-body and external classes keep
+    # today's behavior (full / pointer-only respectively). An explicit
+    # ``context_requires_development`` wins: False stays pointer-only (never
+    # nav), True stays full — the override's meaning is unchanged.
+    if explicit_dev is not None:
+        dev_full_resident = docs_need_development
+    elif _task_requires_self_body_docs(task) or _task_uses_external_context(task):
+        dev_full_resident = True
+    else:
+        dev_full_resident = _task_development_full_resident(task)
+
     # v6.115.0 (owner decision): the ARCHITECTURE.md owner-max residency class,
     # computed once from the same structural facts (exhaustive precedence table
     # in _task_architecture_full_resident; unknown shapes default to FULL).
@@ -1558,6 +1598,7 @@ def _capture_context_core(
         ),
         docs_need_development=docs_need_development,
         architecture_full_resident=arch_full_resident,
+        development_full_resident=dev_full_resident,
     )
 
 

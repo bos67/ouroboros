@@ -219,3 +219,43 @@ def test_v6115_architecture_context_section_is_class_scoped():
     # Default keeps non-task callers (consciousness governance) at full-in-max.
     default = cl.architecture_context_section(None, context_mode="max", text=arch)
     assert "BODY" in default
+
+
+def test_v6116_development_nav_class_in_max_gets_nav_map_and_pointer():
+    """v6.116.0 (owner decision, the ARCHITECTURE mirror): in owner-max
+    ``development_full=False`` renders the lossless navigation map AND names
+    docs/DEVELOPMENT.md in the visible on-demand pointer; the full class keeps
+    the body with NO pointer entry; low ignores the flag (full stays the low
+    form); the pointer-only posture (include_development=False) is unaffected
+    by the flag either way."""
+    arch = "## Arch A\n\nARCHBODY\n"
+    dev = "# Dev\n\n## Dev A\n\nDEVBODY\n"
+
+    def _render(mode, dev_full, include_dev=True):
+        return "\n\n".join(cl.reference_doc_sections(
+            None,
+            context_mode=mode,
+            include_development=include_dev,
+            architecture_text=arch,
+            development_text=dev,
+            development_full=dev_full,
+        ))
+
+    max_nav = _render("max", False)
+    assert "DEVBODY" not in max_nav
+    assert "## DEVELOPMENT.md (navigation map)" in max_nav
+    assert "docs/DEVELOPMENT.md" in _pointer_listing(max_nav)
+
+    max_full = _render("max", True)
+    assert "DEVBODY" in max_full
+    assert "docs/DEVELOPMENT.md" not in max_full  # no pointer entry when full
+
+    low_full_flag = _render("low", False)
+    assert "DEVBODY" in low_full_flag  # low ignores the flag
+
+    external = _render("max", False, include_dev=False)
+    assert "## DEVELOPMENT.md (navigation map)" not in external
+    assert "docs/DEVELOPMENT.md" in _pointer_listing(external)
+
+    external_full_flag = _render("max", True, include_dev=False)
+    assert _pointer_listing(external_full_flag) == _pointer_listing(external)

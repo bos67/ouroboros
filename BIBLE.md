@@ -108,10 +108,12 @@ on every restart, but one personality that remembers its path.
   prompt, BIBLE.md, identity.md, scratchpad, durable knowledge index,
   recent-dialogue horizon) stays always-loaded in full; 
   the agent's self-body documentation (ARCHITECTURE.md, DEVELOPMENT.md) stays
-  RESIDENT in owner-`max` for self-body work; ARCHITECTURE.md residency is the
-  owner-selected class-aware posture (self-body classes full; direct-chat and
-  externally-bound classes receive the lossless navigation map + visible
-  on-demand pointer), and narrowing it for a task-class is itself an
+  RESIDENT in owner-`max` for self-body work; ARCHITECTURE.md and
+  DEVELOPMENT.md residency is the owner-selected class-aware posture (self-body
+  classes full; direct-chat turns receive the lossless navigation map +
+  visible on-demand pointer for both documents; externally-bound classes
+  receive the navigation map + pointer for ARCHITECTURE.md and the on-demand
+  pointer for DEVELOPMENT.md), and narrowing it for a task-class is itself an
   owner-level horizon decision, not a silent default; reduction is by
   relocation to on-demand reads with a visible pointer (a lossless
   representation, not truncation), or by deeper consolidation, never silent

@@ -9,15 +9,20 @@ Doc matrix (D-ARCH unification, owner 2026-08-08):
        the navigation map stays the form for EVERY class. It remains
        Ouroboros's capability/tools/access map — the relocation never
        truncates: non-resident classes can read any section on demand.
-  DEVELOPMENT is MODE-INDEPENDENT per task class, keyed by D-DEV (owner
-       2026-08-08) on the ACTIVE REPO BINDING — the handbook loads exactly when
-       the work targets Ouroboros's own body, a path fact and never a guess from
-       message text (P5). On-demand pointer for the EXTERNAL-SURFACE class (a
-       bound workspace incl. an auto-provisioned genesis tree, a subagent, an
-       api/cli/scheduled surface); full for everything still bound to the system
-       repo — including a direct-chat turn in a PROJECT ROOM, which binds no
-       workspace. Project MEMBERSHIP is deliberately NOT the signal. Explicit
-       context_requires_development / context_requires_self_body_docs win.
+  DEVELOPMENT inclusion is keyed by D-DEV (owner 2026-08-08) on the ACTIVE
+       REPO BINDING — the handbook loads exactly when the work targets
+       Ouroboros's own body, a path fact and never a guess from message text
+       (P5). On-demand pointer for the EXTERNAL-SURFACE class (a bound
+       workspace incl. an auto-provisioned genesis tree, a subagent, an
+       api/cli/scheduled surface); full for everything still bound to the
+       system repo. Project MEMBERSHIP is deliberately NOT the signal.
+       v6.116.0 (owner decision, the ARCHITECTURE mirror): the owner-max
+       RENDERED form of an inlined handbook is class-scoped too — direct-chat
+       turns get the lossless navigation map + visible on-demand pointer;
+       self-body classes (pooled/evolution/deep_self_review/review/explicit
+       flag) keep the full document; low mode keeps full for every inlined
+       class. Explicit context_requires_development / context_requires_self_body_docs
+       win (False stays pointer-only, never nav).
   README/CHECKLISTS: on-demand pointer in all modes.
 SYSTEM + BIBLE are tier-0 and always full.
 """
@@ -29,6 +34,9 @@ import tempfile
 # Unique sentinel placed inside the ARCHITECTURE body so we can prove the full
 # body is inlined (max) vs replaced by a structure-only nav map (low).
 _ARCH_BODY_SENTINEL = "ARCH_BODY_SENTINEL_XYZ"
+
+# v6.116.0: same role for the DEVELOPMENT body — proves full vs nav-map forms.
+_DEV_BODY_SENTINEL = "DEV_BODY_SENTINEL_XYZ"
 
 
 def _make_env_and_memory(tmpdir: pathlib.Path):
@@ -52,7 +60,12 @@ def _make_env_and_memory(tmpdir: pathlib.Path):
         + "## Section B\n\nbeta\n",
         encoding="utf-8",
     )
-    (repo_dir / "docs" / "DEVELOPMENT.md").write_text("# DEVELOPMENT.md — Dev Guide", encoding="utf-8")
+    (repo_dir / "docs" / "DEVELOPMENT.md").write_text(
+        "# DEVELOPMENT.md — Dev Guide\n\n## Dev Section\n\n"
+        + _DEV_BODY_SENTINEL
+        + "\n",
+        encoding="utf-8",
+    )
     (repo_dir / "README.md").write_text('[![Version 5.5.0](https://img.shields.io/badge/version-5.5.0-green.svg)](VERSION)', encoding="utf-8")
     (repo_dir / "docs" / "CHECKLISTS.md").write_text("## Repo Commit Checklist\n| # | item |", encoding="utf-8")
     (drive_root / "state" / "state.json").write_text('{"spent_usd": 0}', encoding="utf-8")
@@ -436,16 +449,17 @@ def test_development_keys_on_the_repo_binding_not_project_membership():
     assert "DEVELOPMENT.md" in folder_max  # named in the on-demand pointer
 
     # A direct-chat turn in a PROJECT ROOM binds no workspace: it keeps the
-    # DEVELOPMENT handbook (D-DEV, unchanged) and — v6.115.0 (owner decision) —
-    # sits in the ARCH nav class in max: nav map + pointer instead of the full
-    # body.
+    # handbook included (D-DEV, unchanged) but — v6.116.0 (owner decision, the
+    # ARCHITECTURE mirror) — renders the lossless DEV nav map + pointer in max,
+    # and (v6.115.0) sits in the ARCH nav class too.
     room_chat_max = _build_system_text(
         {"project_id": "proj_sub", "_is_direct_chat": True}, context_mode="max"
     )
     assert _ARCH_BODY_SENTINEL not in room_chat_max
     assert "navigation map" in room_chat_max
     assert "docs/ARCHITECTURE.md" in room_chat_max  # pointer entry (P1)
-    assert "## DEVELOPMENT.md" in room_chat_max
+    assert _DEV_BODY_SENTINEL not in room_chat_max  # DEV nav map, not full
+    assert "docs/DEVELOPMENT.md" in room_chat_max  # named in the pointer (P1)
     room_chat_low = _build_system_text(
         {"project_id": "proj_sub", "_is_direct_chat": True}, context_mode="low"
     )
@@ -560,6 +574,69 @@ def test_v6115_architecture_class_matrix_in_max():
     forced = _build_system_text({"context_requires_self_body_docs": False}, context_mode="max")
     assert _ARCH_BODY_SENTINEL not in forced
     assert "navigation map" in forced
+
+
+def test_v6116_development_class_matrix_in_max():
+    """v6.116.0 (owner decision, the ARCHITECTURE mirror): the owner-max class
+    matrix for the RENDERED DEVELOPMENT form. Direct chat gets the lossless
+    nav map + pointer; pooled / evolution / deep_self_review / explicit
+    self-body keep the full document; the external class stays pointer-only
+    (unchanged); explicit context_requires_development keeps its exact old
+    semantics (False → pointer-only, never nav; True → full); low mode keeps
+    full for every inlined class."""
+    chat = _build_system_text({"_is_direct_chat": True}, context_mode="max")
+    assert _DEV_BODY_SENTINEL not in chat
+    assert "## DEVELOPMENT.md (navigation map)" in chat
+    assert "docs/DEVELOPMENT.md" in chat  # named in the pointer (P1)
+
+    pooled = _build_system_text(context_mode="max")
+    assert _DEV_BODY_SENTINEL in pooled
+    assert "## DEVELOPMENT.md (navigation map)" not in pooled
+
+    for kind in ({"type": "evolution"}, {"type": "deep_self_review"}, {"type": "review"}):
+        text = _build_system_text(kind, context_mode="max")
+        assert _DEV_BODY_SENTINEL in text, kind
+
+    explicit_self_body = _build_system_text(
+        {"_is_direct_chat": True, "context_requires_self_body_docs": True},
+        context_mode="max",
+    )
+    assert _DEV_BODY_SENTINEL in explicit_self_body  # flag wins both ways
+
+    forced_nav = _build_system_text(
+        {"context_requires_self_body_docs": False}, context_mode="max"
+    )
+    assert _DEV_BODY_SENTINEL not in forced_nav  # explicit False → nav form
+    assert "## DEVELOPMENT.md (navigation map)" in forced_nav
+
+    # External class: pointer-only, no DEV nav map added (unchanged posture).
+    external = _build_system_text(
+        {
+            "workspace_root": "/tmp/example-workspace",
+            "workspace_mode": "external",
+            "metadata": {"source": "cli"},
+        },
+        context_mode="max",
+    )
+    assert "## DEVELOPMENT.md" not in external  # neither full nor nav form
+    assert "docs/DEVELOPMENT.md" in external  # bare pointer (P1)
+
+    # Explicit per-task overrides keep their exact old semantics.
+    explicit_off = _build_system_text(
+        {"context_requires_development": False}, context_mode="max"
+    )
+    assert "## DEVELOPMENT.md" not in explicit_off  # pointer-only, never nav
+    assert "docs/DEVELOPMENT.md" in explicit_off
+
+    explicit_on = _build_system_text(
+        {"_is_direct_chat": True, "context_requires_development": True},
+        context_mode="max",
+    )
+    assert _DEV_BODY_SENTINEL in explicit_on  # True stays full, even in chat
+
+    # Low mode: the full document stays the low form for inlined classes.
+    low_chat = _build_system_text({"_is_direct_chat": True}, context_mode="low")
+    assert _DEV_BODY_SENTINEL in low_chat
 
 
 # Predicted route pressure no longer changes the document projection. The

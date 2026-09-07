@@ -164,6 +164,13 @@ class ContextCore:
     # it (the nav map stays the low form for every class). Default True keeps
     # any constructor that predates the field at the documented full behavior.
     architecture_full_resident: bool = True
+    # v6.116.0 (owner decision): DEVELOPMENT.md full residency in owner-max is
+    # class-scoped (the ARCHITECTURE mirror): direct chat gets the lossless nav
+    # map + on-demand pointer; self-body classes stay full; external classes are
+    # unaffected (they render pointer-only via docs_need_development=False).
+    # An explicit context_requires_development override keeps its exact old
+    # semantics (False → pointer-only, never nav). Low mode ignores it.
+    development_full_resident: bool = True
 
 
 def _render_context_system_content(
@@ -187,6 +194,7 @@ def _render_context_system_content(
             context_mode=mode,
             include_development=core.docs_need_development,
             architecture_full=core.architecture_full_resident,
+            development_full=core.development_full_resident,
             architecture_text=core.architecture_md,
             development_text=core.development_md,
         )
@@ -519,6 +527,7 @@ def build_context_fit_plan(
             "user_content": user_content,
             "docs_need_development": core.docs_need_development,
             "architecture_full_resident": core.architecture_full_resident,
+            "development_full_resident": core.development_full_resident,
         },
         ensure_ascii=False,
         sort_keys=True,

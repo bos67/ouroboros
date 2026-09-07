@@ -154,6 +154,7 @@ def reference_doc_sections(
     context_mode: str,
     include_development: bool,
     architecture_full: bool = True,
+    development_full: bool = True,
     architecture_text: str | None = None,
     development_text: str | None = None,
 ) -> List[str]:
@@ -165,12 +166,16 @@ def reference_doc_sections(
     omission).
 
     ``context_mode`` is the OWNER context mode; together with
-    ``architecture_full`` it decides the ARCHITECTURE form (v6.115.0: full for
-    self-body classes / nav map + on-demand pointer for the direct-chat and
-    external classes in max; nav map for every class in low).
-    ``include_development`` is the caller's mode-independent decision whether the
-    self-engineering handbook is inline (self-body/self-mod/evolution work) or an
-    on-demand pointer (project tasks — folder or not — and external surfaces).
+    ``architecture_full`` and ``development_full`` it decides the
+    ARCHITECTURE / DEVELOPMENT forms in owner-max (v6.115.0 / v6.116.0 owner
+    decisions: full for self-body classes; direct chat gets the lossless nav
+    map + on-demand pointer — for ARCHITECTURE.md and DEVELOPMENT.md
+    respectively; external surfaces keep the pointer-only DEVELOPMENT posture
+    via ``include_development=False``, so ``development_full`` is moot there;
+    nav map for every class in low). ``include_development`` is the caller's
+    mode-independent decision whether the self-engineering handbook is inline
+    (self-body/self-mod/evolution work) or an on-demand pointer (project tasks
+    — folder or not — and external surfaces).
     """
     parts: List[str] = []
     on_demand: List[str] = []
@@ -197,7 +202,23 @@ def reference_doc_sections(
     )
     if dev_text.strip():
         if include_development:
-            parts.append("## DEVELOPMENT.md\n\n" + dev_text)
+            # v6.116.0 (owner decision, the ARCHITECTURE mirror): full residency
+            # in owner-max is class-scoped — the direct-chat class renders the
+            # lossless nav map + a disclosed on-demand pointer (P1: named,
+            # never silent); self-body classes keep the full document. Low mode
+            # ignores the flag: the full document stays the low form (its
+            # posture is separately test-pinned).
+            if context_mode != "low" and not development_full:
+                parts.append(
+                    generate_doc_nav_map(
+                        dev_text,
+                        title="DEVELOPMENT.md",
+                        rel_path="docs/DEVELOPMENT.md",
+                    )
+                )
+                on_demand.append("docs/DEVELOPMENT.md")
+            else:
+                parts.append("## DEVELOPMENT.md\n\n" + dev_text)
         else:
             on_demand.append("docs/DEVELOPMENT.md")
 
