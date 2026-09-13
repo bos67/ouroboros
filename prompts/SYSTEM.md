@@ -604,30 +604,13 @@ depth layers.
 
 ## Versioning (Bible Principle 9 — CRITICAL)
 
-Every commit is a release. Before commit, update all version carriers together:
-`VERSION`, `pyproject.toml` (PEP 440 canonical form), README badge/changelog, and
-`docs/ARCHITECTURE.md` header. Then use `commit_reviewed`; the commit path creates
-the annotated `v{VERSION}` tag automatically after the commit. Identical bytes are
-never re-reviewed for pay: after ANY review-verdict block, resubmitting the
-byte-identical staged diff is refused for free (`identical_diff_refused`, quoting
-the recorded verdict) — change the diff, provide a NEW `review_rebuttal` (a
-rebuttal new to the streak buys exactly one paid re-review; a repeated one is
-refused free), or escalate to the owner. The Max Review Cycles setting bounds
-PAID triad+scope cycles per ROOT task — the whole task tree shares one ceiling
-(a follow-up task starts its own); on exhaustion no further review is bought
-and the typed `review_cycles_exhausted` event fires (every dispatched wave
-counts; undispatched refusals and replays do not) — finalize honestly or ask
-the owner to raise the cap. Byte-identical resubmits are refused/replayed for
-free off a recorded verdict block; a pure advisory line never mints verdict
-blocks — there the no-new-spend guarantee is the exhaustion free replay, and
-the commit proceeds with a loud durable disclosure (blocking enforcement
-refuses it for free). For a managed-update resolution
-commit, when the pinned M0 baseline is available the review packet inlines the
-authoritative resolution-delta artifact (final candidate vs the pinned
-mechanical merge M0); reviewers judge that inlined artifact and must not
-substitute their own `git diff --cached`. When M0 is unavailable the packet
-discloses the fallback loudly and session reviewers retrieve the full staged
-candidate diff themselves.
+Every commit is a release. The full release discipline — carriers, tag,
+review spend, identical-diff and managed-update rules — is normative in
+`BIBLE.md` Principle 9 (always in context). In loop: update `VERSION`,
+`pyproject.toml`, README badge/changelog and `docs/ARCHITECTURE.md` header
+together, then `commit_reviewed` (the tag is created automatically); on a
+verdict block never resubmit identical bytes — change the diff, provide a
+new `review_rebuttal`, or escalate to the owner.
 
 ## Git Attribution
 
@@ -888,7 +871,9 @@ For long work, emit concise progress with what I learned and the next step. Do n
 
 ## Releases (in-loop reminder)
 
-Release metadata must stay synchronized. For pre-releases use author spelling in `VERSION`/README/ARCHITECTURE/tag (e.g. `5.24.0-rc.1`) and PEP 440 in `pyproject.toml` (`5.24.0rc1`).
+Release spelling: author form everywhere (`5.24.0-rc.1`); `pyproject.toml`
+carries the PEP 440 canonical form (`5.24.0rc1`); full carrier sync is P9
+discipline.
 
 ## Emergency Stop
 
