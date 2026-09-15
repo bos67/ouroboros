@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import pathlib
+import subprocess
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -232,6 +233,56 @@ def update_state(mutator) -> Dict[str, Any]:
         return st
     finally:
         release_file_lock(STATE_LOCK_PATH, lock_fd)
+
+
+def rederive_current_sha_from_repo(repo_dir) -> Optional[Dict[str, str]]:
+    """Re-derive current_sha from git HEAD at ordinary server start (ibl-current-sha-deriv).
+
+    current_sha is written only by update/checkout paths (git_ops.checkout_and_reset), so a
+    manual commit plus a plain restart leaves it stale; the stale value then feeds
+    /api/state (ws.js reload-on-SHA keeps the old UI alive) and worker spawn SHA
+    verification ("Worker SHA mismatch after spawn"). With no active update-intent,
+    git HEAD is the authority for what is running. Update/checkout flows are untouched:
+    they hold their own intent and rewrite the value themselves. Returns
+    {"old": .., "new": ..} when the record was healed, else None.
+    """
+    if not repo_dir or not pathlib.Path(repo_dir).is_dir():
+        return None
+    # Lazy import: git_ops imports this module's siblings at module top; importing it
+    # here (per call) avoids any import-cycle risk at module load time.
+    from supervisor.git_ops import _read_update_intent
+
+    try:
+        if _read_update_intent():
+            # A managed update / checkout intent owns the transition; its path
+            # rewrites current_sha itself.
+            return None
+    except Exception:
+        # Visible, not silent: an operator verifying a restart must distinguish
+        # "no-op (SHA already current)" from "heal skipped (intent/git failure)".
+        log.warning("current_sha re-derivation skipped", exc_info=True)
+        return None
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(repo_dir), capture_output=True, text=True, check=False,
+            timeout=10,
+        )
+    except Exception:
+        # Same disclosure for git invocation failures.
+        log.warning("current_sha re-derivation skipped (git error)", exc_info=True)
+        return None
+    if proc.returncode != 0:
+        return None
+    head = str(proc.stdout or "").strip()
+    if not head:
+        return None
+    st = load_state()
+    old = str(st.get("current_sha") or "").strip()
+    if old == head:
+        return None
+    update_state(lambda s: s.__setitem__("current_sha", head))
+    return {"old": old, "new": head}
 
 
 def init_state() -> Dict[str, Any]:

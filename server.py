@@ -2101,6 +2101,7 @@ def _run_supervisor(settings: dict) -> None:
         )
 
         from supervisor.state import init as state_init, init_state, load_state, save_state, update_state
+        from supervisor.state import rederive_current_sha_from_repo
         from supervisor.state import append_jsonl, update_budget_from_usage, rotate_chat_log_if_needed, rotate_jsonl_log_if_needed
         state_init(DATA_DIR, float(settings.get("TOTAL_BUDGET", SETTINGS_DEFAULTS["TOTAL_BUDGET"])))
         init_state()
@@ -2109,6 +2110,25 @@ def _run_supervisor(settings: dict) -> None:
         ok, msg = _bootstrap_supervisor_repo(settings)
         if not ok:
             log.error("Supervisor bootstrap failed: %s", msg)
+
+        # ibl-current-sha-deriv: git HEAD is authoritative at ordinary start when no
+        # update/checkout intent owns the transition. Heals /api/state sha, ws.js
+        # reload-on-SHA, and worker spawn SHA verification after manual commits.
+        try:
+            _sha_fix = rederive_current_sha_from_repo(REPO_DIR)
+            if _sha_fix:
+                log.info(
+                    "Re-derived state current_sha from git HEAD: %s -> %s",
+                    (_sha_fix.get("old") or "unset")[:8], (_sha_fix.get("new") or "")[:8],
+                )
+                append_jsonl(DATA_DIR / "logs" / "events.jsonl", {
+                    "ts": utc_now_iso(),
+                    "type": "current_sha_rederived",
+                    "old_sha": _sha_fix.get("old") or "",
+                    "new_sha": _sha_fix.get("new") or "",
+                })
+        except Exception:
+            log.debug("current_sha re-derivation skipped", exc_info=True)
 
         from supervisor.queue import (
             enqueue_task, enforce_task_timeouts, enqueue_evolution_task_if_needed,

@@ -1,4 +1,4 @@
-# Ouroboros v6.116.1 — Architecture & Reference
+# Ouroboros v6.116.2 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -137,6 +137,7 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       ├── project_dialogue.py ← Read-only Project dialogue lens + annotations; `needs_manual_target` picker authority
       ├── project_lease.py ← One-writer-per-project lease (`assign_tasks`)
       ├── context.py ← LLM context-source builder; `_capture_context_core` places `## Available subagents`
+      ├── context_residency.py ← Class-aware residency classifiers for self-body docs (ARCHITECTURE/DEVELOPMENT full vs nav map); leaf of context.py
       ├── main_context_authority.py ← Main-only defensive continuation projection
       ├── client_surface.py ← Owner Surface Fact SSOT: bounded normalizer for sending-surface observables
       ├── context_fit.py ← Main task-local fit authority: Max/Low projections from one immutable core
@@ -579,7 +580,7 @@ Managed update is the second user of that machinery, with the opposite failure p
 
 An active Evolution transaction or managed-update merge uses `rescue_and_block`: recovery evidence linked to the transaction, tree left intact, Evolution paused rather than erasing partially resolved work. With no such owner, startup uses `rescue_and_reset`. Source/local-development startup skips the managed checkout/reset path, performs only dependency sync + import test. Worker startup checks are diagnostic and warning-only: launcher-management env vars propagate into worker, review, and test subprocesses, so auto-rescue would let an incidental child steal another actor's edits.
 
-`server.py` establishes `OUROBOROS_AGENT_PYTHON` from its actual interpreter immediately after binding the repo import root and before workers or review subprocesses start. Hermetic commit/review preflight uses that handle (then `sys.executable`, then `python3`) so tests run in the environment that contains Ouroboros dependencies; plugin verification is part of that preflight.
+`server.py` establishes `OUROBOROS_AGENT_PYTHON` from its actual interpreter immediately after binding the repo import root and before workers or review subprocesses start. Hermetic commit/review preflight uses that handle (then `sys.executable`, then `python3`) so tests run in the environment that contains Ouroboros dependencies; plugin verification is part of that preflight. After the supervisor repo bootstrap, `server.py` re-derives `state.json.current_sha` from `git rev-parse HEAD` when no update/checkout intent is active (`supervisor.state.rederive_current_sha_from_repo`, fail-safe on git errors, `current_sha_rederived` event): git HEAD is the authority for what is running at an ordinary start, so a manual commit plus restart no longer feeds a stale SHA to `/api/state`, ws.js reload-on-SHA, or worker spawn verification.
 
 User process tools have a separate surface-aware resolver. For exact unversioned `python`/`python3` on `run_command`, `run_script`, `start_service`, and run-kind `verify_and_record`, registry pre-dispatch resolves once before deterministic guards so the guard and handler see byte-identical argv. Priority: a reviewed skill environment; backend `python3` for an executor mapping; project `.venv`, otherwise target `PATH`, for external/user work; then the verified agent interpreter for system-repo, task-drive, and artifact surfaces. Absolute or versioned interpreters, shell bodies, and non-Python commands remain literal. Resolution emits secret-free provenance, never silently installs dependencies, fails closed only when a system-owned interpreter cannot be proven.
 ## 3. Web UI Pages & Buttons
