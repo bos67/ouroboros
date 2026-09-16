@@ -178,6 +178,96 @@ def test_openai_compatible_metadata_window_parses_max_model_len(monkeypatch):
     assert win_prefixed == 1048576
 
 
+def test_openai_compatible_metadata_window_accepts_items_and_root_list(monkeypatch):
+    """sprutdock-style /models ({'total': N, 'items': [...]}) and a bare root list
+    must also resolve a window; an unknown dict shape still fails closed (0)."""
+    import httpx
+
+    monkeypatch.setattr("ouroboros.config.load_settings", lambda: {"OPENAI_COMPATIBLE_API_KEY": "k"})
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"total": 428, "items": [{"id": "my-model", "context_length": 1048576}]}
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp())
+    assert ce._openai_compatible_metadata_window("my-model", "http://x/v1", allow_fetch=True) == 1048576
+
+    class _RespList:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return [{"id": "my-model", "max_model_len": 262144}]
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _RespList())
+    assert ce._openai_compatible_metadata_window("my-model", "http://x/v1", allow_fetch=True) == 262144
+
+    class _RespUnknown:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"unfamiliar": [{"id": "my-model", "max_model_len": 999999}]}
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _RespUnknown())
+    assert ce._openai_compatible_metadata_window("my-model", "http://x/v1", allow_fetch=True) == 0
+
+
+def test_openai_compatible_metadata_window_follows_offset_pagination(monkeypatch):
+    """sprutdock paginates via ?offset= (24/page); a model beyond page 1 must be
+    found, and a one-shot server (no integer total) must stop after page 1."""
+    import httpx
+
+    monkeypatch.setattr("ouroboros.config.load_settings", lambda: {"OPENAI_COMPATIBLE_API_KEY": "k"})
+
+    catalog = [
+        {"id": f"filler-model-{i}", "context_length": 8192} for i in range(24)
+    ] + [{"id": "my-model", "context_length": 1310720}]
+    total = len(catalog)
+    calls = []
+
+    class _Resp:
+        def __init__(self, start):
+            self._start = start
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            chunk = catalog[self._start:self._start + 24]
+            return {"total": total, "items": chunk}
+
+    def _fake_get(url, headers=None, timeout=None, params=None):
+        calls.append(dict(params) if isinstance(params, dict) else None)
+        start = int((params or {}).get("offset") or 0)
+        return _Resp(start)
+
+    monkeypatch.setattr(httpx, "get", _fake_get)
+    win = ce._openai_compatible_metadata_window("my-model", "http://x/v1", allow_fetch=True)
+    assert win == 1310720
+    assert calls[0] is None  # first fetch unpaginated
+    assert calls[1] == {"offset": 24}  # walked to page 2
+
+    # One-shot server: root list, no total -> exactly one fetch, then stop.
+    calls.clear()
+    oneshot = []
+
+    class _RespOneShot:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            oneshot.append(1)
+            return [{"id": "other", "max_model_len": 4096}]
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _RespOneShot())
+    assert ce._openai_compatible_metadata_window("my-model", "http://x/v1", allow_fetch=True) == 0
+    assert len(oneshot) == 1
+
+
 def test_openai_compatible_metadata_window_fail_closed(monkeypatch):
     import httpx
 

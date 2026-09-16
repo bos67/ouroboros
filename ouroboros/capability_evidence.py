@@ -794,22 +794,45 @@ def _openai_compatible_metadata_window(
             from ouroboros.config import load_settings
             api_key = str((load_settings() or {}).get("OPENAI_COMPATIBLE_API_KEY") or "")
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        resp = httpx.get(str(base_url).rstrip("/") + "/models", headers=headers, timeout=5.0)
-        resp.raise_for_status()
-        payload = resp.json()
-        items = payload.get("data") if isinstance(payload, dict) else payload
-        # The saved model is normally provider-prefixed (e.g. ``openai-compatible::llama-3``)
-        # while /models lists the BARE id — match either spelling.
-        wanted = {str(model), str(model).split("::", 1)[-1]}
-        for item in (items or []):
-            if not isinstance(item, dict) or str(item.get("id") or item.get("name") or "") not in wanted:
-                continue
-            sources = [item, item.get("meta") if isinstance(item.get("meta"), dict) else {}]
-            for src in sources:
-                for key in ("max_model_len", "context_length", "context_window", "max_context_length"):
-                    val = src.get(key)
-                    if isinstance(val, (int, float)) and int(val) > 0:
-                        return int(val)
+        # The item list may be paginated (sprutdock serves 24 rows per page and
+        # ignores everything but ?offset=). Walk pages until the server's total is
+        # covered or a page comes back empty; the hard cap bounds a misbehaving
+        # server. One-shot servers (vLLM/Ollama) report no integer ``total``, so
+        # the loop exits after the first page.
+        for page in range(40):
+            params = None if page == 0 else {"offset": page * 24}
+            resp = httpx.get(
+                str(base_url).rstrip("/") + "/models", headers=headers, timeout=5.0, params=params
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            # /models item lists arrive under several provider shorthands: OpenAI-style
+            # root list or ``data``, sprutdock-style ``items``, vLLM/Ollama-style
+            # ``models``. Match only these KNOWN keys (never "first list-valued field")
+            # so an unknown schema still scans nothing, exactly as before.
+            items = payload if isinstance(payload, list) else None
+            if items is None and isinstance(payload, dict):
+                for key in ("data", "items", "models"):
+                    candidate = payload.get(key)
+                    if isinstance(candidate, list):
+                        items = candidate
+                        break
+            # The saved model is normally provider-prefixed (e.g. ``openai-compatible::llama-3``)
+            # while /models lists the BARE id — match either spelling.
+            wanted = {str(model), str(model).split("::", 1)[-1]}
+            for item in (items or []):
+                if not isinstance(item, dict) or str(item.get("id") or item.get("name") or "") not in wanted:
+                    continue
+                sources = [item, item.get("meta") if isinstance(item.get("meta"), dict) else {}]
+                for src in sources:
+                    for key in ("max_model_len", "context_length", "context_window", "max_context_length"):
+                        val = src.get(key)
+                        if isinstance(val, (int, float)) and int(val) > 0:
+                            return int(val)
+            total = payload.get("total") if isinstance(payload, dict) else None
+            fetched = len(items or [])
+            if fetched == 0 or not isinstance(total, int) or page * 24 + fetched >= total:
+                break
         return 0
     except Exception:
         return 0

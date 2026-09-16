@@ -95,6 +95,7 @@ def run_node_tests(
     temp_root: pathlib.Path,
     timeout: float,
     max_output: int,
+    total_timeout: Optional[float] = None,
 ) -> Optional[dict]:
     """Run the candidate's browser-module suite once, contained, or block typed.
 
@@ -102,6 +103,9 @@ def run_node_tests(
     the candidate). Otherwise a small result dict whose ``error`` key carries
     the bounded typed diagnosis — ``None`` on green. The caller runs this as
     the FIRST consumer of the shared preflight budget, before any pytest pass.
+    ``timeout`` is this lane's own phase ceiling; ``total_timeout`` (the gate's
+    whole budget) is reported in the expiry diagnosis so a kill names both the
+    slice it exhausted and the total it belongs to.
     """
     # Lazy sibling import: preflight_runner imports this module at its top, so
     # the shared helpers must be reached at call time, not import time.
@@ -216,9 +220,10 @@ def run_node_tests(
             reap_error, max_output,
         )
     elif returncode is None:
+        total = total_timeout if total_timeout is not None else timeout
         result["error"] = pr._with_timeout_excerpt(
             f"⚠️ PRE_PUSH_TEST_ERROR: node --test timed out after {timeout:.0f} "
-            "seconds in the node pass (it shares the preflight total budget)",
+            f"seconds in the node pass (phase budget {timeout:.0f} of total {total:.0f} seconds)",
             output, max_output,
         )
     elif returncode != 0:

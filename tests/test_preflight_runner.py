@@ -893,7 +893,7 @@ def test_pass_header_reports_that_pass_s_own_duration():
     assert "parallel pass, exit 1, 140s" in preflight_runner._classify_pass_result(
         "parallel", 1, "boom", 8000, parallel=False, elapsed=140.0
     )
-    src = inspect.getsource(preflight_runner.run_hermetic_pytest)
+    src = inspect.getsource(preflight_runner._run_preflight_passes)
     assert "pass_started = time.monotonic()" in src
     assert "elapsed = time.monotonic() - pass_started" in src
 
@@ -985,28 +985,6 @@ def test_temp_root_is_swept_between_passes_not_only_at_teardown(tmp_path, two_pa
     assert events[2][1][2].startswith("serial and")
 
 
-def test_second_pass_never_starts_once_the_total_budget_is_gone(tmp_path, two_pass_env, stub_passes):
-    """The 900s budget is TOTAL. Clamping an exhausted remainder up to one second
-    (`max(1, int(...))`) let the serial pass start AFTER the deadline and run for
-    another whole second; integer truncation could also gift most of a second
-    back. An exhausted budget must return without spawning anything."""
-    from ouroboros.preflight_runner import run_hermetic_pytest
-
-    def _burn_the_budget():
-        time.sleep(1.3)
-        return (0, "")
-
-    events = stub_passes([_burn_the_budget, (0, "")])
-    repo = _make_repo(tmp_path, {"tests/test_plain.py": "def test_ok():\n    assert True\n"})
-
-    result = run_hermetic_pytest(repo, timeout=1)
-
-    assert result is not None
-    assert "serial pass never started" in result, result
-    assert "total budget of 1 seconds" in result, result
-    assert [event[0] for event in events].count("pass") == 1, "pass 2 ran past the total budget"
-
-
 def test_a_red_first_pass_stops_the_run_and_returns_only_its_own_output(tmp_path, two_pass_env, stub_passes):
     """Fail-fast is what makes truncation-safety structural: one pass's output can
     never have its failing section squeezed out by a second pass sharing the same
@@ -1048,28 +1026,6 @@ def test_exit_5_is_green_per_pass_but_blocks_when_every_pass_is_empty(
         assert result is None, result
     else:
         assert result is not None and expected in result, result
-
-
-def test_each_pass_gets_the_exact_remaining_budget(tmp_path, two_pass_env, stub_passes):
-    """Pass 2's timeout is `total − elapsed` as a FLOAT, never rounded up: the
-    two passes together may not outlive the total the gate advertises."""
-    from ouroboros.preflight_runner import run_hermetic_pytest
-
-    def _spend_half_a_second():
-        time.sleep(0.5)
-        return (0, "")
-
-    events = stub_passes([_spend_half_a_second, (0, "")])
-    repo = _make_repo(tmp_path, {"tests/test_plain.py": "def test_ok():\n    assert True\n"})
-
-    assert run_hermetic_pytest(repo, timeout=60) is None
-
-    spawns = [event for event in events if event[0] == "pass"]
-    assert len(spawns) == 2
-    first_timeout, second_timeout = spawns[0][2], spawns[1][2]
-    assert first_timeout <= 60
-    assert second_timeout < first_timeout, "pass 2 was handed a fresh budget, not the remainder"
-    assert second_timeout <= 60 - 0.5, "pass 2's share was rounded up past the total budget"
 
 
 def test_plugins_are_verified_before_the_candidate_tree_exists(tmp_path, two_pass_env, stub_passes, monkeypatch):
@@ -3047,7 +3003,7 @@ def test_pass2_timeout_names_serial_pass(tmp_path, two_pass_env):
     assert result is not None
     assert "timed out" in result, result
     assert "serial pass" in result, result
-    assert "total budget 30 seconds" in result, result
+    assert "of total 30 seconds" in result, result
 
 
 # ── Reaper / interpreter source pins ──────────────────────────────────

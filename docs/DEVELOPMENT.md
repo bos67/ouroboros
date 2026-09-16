@@ -2709,7 +2709,9 @@ the lane is active a missing or unusable runtime is the typed
 `PREFLIGHT_NODE_MISSING`/`PREFLIGHT_NODE_TOO_OLD` hard block and a red suite
 is `NODE_TESTS_FAILED` — never a silent skip.
 
-All passes share one total timeout. `LANE_EXCLUSION_EXPR` and
+Each pass carries a ceiling carved from one resolved total (node ≤ 5%,
+capped at 120s; parallel 80% of the remainder; serial the exact unrounded
+remainder — `_preflight_phase_budgets`). `LANE_EXCLUSION_EXPR` and
 `PARALLEL_PASS_FLAGS` are executable SSOTs pinned against both CI jobs, and so
 is the node step (`cd web && node --test tests/*.test.js`, derived from the
 lane's own glob constants). The selected interpreter must provide
@@ -2746,8 +2748,8 @@ worker, a per-test timeout that killed a worker, a missing plugin, containment
 failure, and ordinary test failure keep distinct diagnostics and remediation.
 
 Exit 5 is green for an individually empty pass but the overall suite may not be
-empty. The first red pass returns immediately. Pass 2 receives only the
-remaining total budget. Mark process/port/global-state tests `serial`; make a
+empty. The first red pass returns immediately. The parallel pass runs on its own slice; the serial pass starts on the
+exact remaining total. Mark process/port/global-state tests `serial`; make a
 merely slow test faster or split it, because the serial lane has no per-test
 timeout.
 

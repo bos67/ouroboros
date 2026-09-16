@@ -424,10 +424,24 @@ def _grow_ledger(path, size: int) -> None:
     test runs. Corruption BEFORE the tail instead raises UsageLedgerCorrupt
     without mutating the file, degrading the budget check to its established
     "COST ACCOUNTING UNAVAILABLE" path while st_size stays exactly `size`.
+
+    Chunked writes (≈8 KiB at a time) instead of one materialized bytes object:
+    the 2026-09-15 gate run OOM-crashed an xdist worker on the 2-core box while
+    running the 20 MB single-allocation version of this helper
+    (PARALLEL_WORKER_CRASH, gw1) — same crash-a-worker class as
+    test_upload_size_limit, fixed here at the source so the test stays
+    parallel-safe. On-disk bytes are identical.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     row = b"not json\n"
-    path.write_bytes(row * (size // len(row)) + b"x" * (size % len(row)))
+    with open(path, "wb") as fh:
+        written = 0
+        chunk = row * 1024
+        while written + len(chunk) <= size:
+            fh.write(chunk)
+            written += len(chunk)
+        tail = size - written
+        fh.write(row * (tail // len(row)) + b"x" * (tail % len(row)))
 
 
 class TestHotStoreGrowthInvariant:

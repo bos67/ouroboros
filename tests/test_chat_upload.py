@@ -121,6 +121,11 @@ def test_upload_lifecycle_delete_removes_file(client, tmp_path):
     assert not dest.exists(), "Deleted file must be gone"
 
 
+@pytest.mark.serial
+# 50MB in-memory payload OOM-crashed an xdist worker on the 2-core box
+# (PARALLEL_WORKER_CRASH, gw1, gate run 2026-09-13T16:51:33): the sanctioned
+# "crashes a worker" serial criterion (docs/CHECKLISTS.md #18). Fast test, no
+# per-test-timeout risk from moving it to the unbounded serial lane.
 def test_upload_size_limit(client, tmp_path):
     """Files over 50MB must be rejected with 413 and no file should be created."""
     upload_dir = tmp_path / "uploads"

@@ -148,7 +148,6 @@ BAND_PATHS = {
     "ouroboros/mcp_client.py": "E5+s2r2 (#447): nextCursor pagination, injective 12-hex slugs, and disclosed collision/pagination omissions grew the MCP client past 1000 lines",
     "ouroboros/observability.py": "Entered the band from 820 lines: child task copy-back now promotes only promised observability CAS manifests/blobs and task-owned source handles into canonical storage before headless GC, with typed unavailable gaps and retry metadata.",
     "ouroboros/platform_layer.py": "Shrank INTO the band: the retired Claude-SDK runtime probes (resolve_claude_runtime, ClaudeRuntimeState) were deleted with the transport (owner-approved Q4 retirement); no new content was added.",
-    "ouroboros/preflight_runner.py": None,
     "ouroboros/projects_registry.py": "Entered the band from 999 lines: the stuck-Working liveness sprint homed the project-thread membership lens (mtime-cached) and its broadcast-choke marker here \u2014 registry semantics belong to the registry, not to message_bus.",
     "ouroboros/protected_artifacts.py": None,
     "ouroboros/request_wire_recovery.py": "E4 (#447): typed CustomToolProjectionError fallback keeps the wire-recovery ladder alive; includes the one-site-sufficient decision record at both retry catch sites",

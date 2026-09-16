@@ -746,7 +746,33 @@ def _plugin_missing_remediation(agent_python: str, rejected: str = "") -> str:
     )
 
 
-_DEFAULT_PREFLIGHT_TIMEOUT_SEC = 900
+_DEFAULT_PREFLIGHT_TIMEOUT_SEC = 2700
+
+# Per-phase ceilings carved from the resolved total (fractions of T; the serial
+# pass runs on the exact unrounded remainder). Slices are CEILINGS, not waits: a
+# phase that finishes early hands its unused time back through the
+# exact-remainder rule, so the whole gate stays bounded by the single resolved
+# total. Measured reference (2-core box): the parallel pass alone needs ~1600s,
+# so the shipped 900s shared budget could never fit parallel + serial + node.
+_NODE_BUDGET_CAP_SEC = 120.0
+_NODE_BUDGET_SHARE = 0.05
+# 0.80: the hermetic parallel pass measured ~1800-1850s on the 2-core box
+# (two 2700s-budget runs killed at 99% on a 1806s slice, 2026-09-15); the
+# slice needs that headroom plus margin without starving the serial lane.
+_PARALLEL_BUDGET_SHARE = 0.80
+
+
+def _preflight_phase_budgets(total: float) -> tuple[float, float, float]:
+    """Split the resolved total into (node, parallel, serial-reservation) ceilings.
+
+    node = min(cap, share*T); parallel = share*(T-node); the serial pass receives
+    the exact remaining total at its start, which equals T-node-parallel when the
+    earlier phases consume their full slices (their unused time flows back to it
+    through the exact-remainder rule instead of being wasted).
+    """
+    node = min(_NODE_BUDGET_CAP_SEC, _NODE_BUDGET_SHARE * total)
+    parallel = _PARALLEL_BUDGET_SHARE * (total - node)
+    return node, parallel, total - node - parallel
 
 
 def _resolve_preflight_timeout(timeout: int) -> int:
@@ -1021,7 +1047,7 @@ def _crash_remediation(output: str) -> str:
     controller with the same crash phrasing as a genuine crash, but the fix is
     the opposite one: the serial pass runs flag-free (no per-test timeout), so
     marking a merely-slow test ``@pytest.mark.serial`` moves the hang into the
-    pass that cannot bound it, where it burns the whole remaining total budget
+    pass that cannot bound it, where it burns its whole phase slice
     and resurfaces as a pass-2 timeout. The label and the hard block are
     identical either way; only this line changes.
     """
@@ -1031,7 +1057,7 @@ def _crash_remediation(output: str) -> str:
             "(--timeout-method=thread terminates the process instead of failing the test). "
             "Make that test faster or split it. Do NOT mark it @pytest.mark.serial: the "
             "serial pass carries no per-test timeout, so the hang would simply move there "
-            "and consume the rest of the total budget."
+            "and consume the serial pass's whole slice."
         )
     return (
         "A pytest-xdist worker DIED instead of reporting a failure. Find the test that "
@@ -1186,6 +1212,137 @@ def _install_source_index_tree(
     )
 
 
+def _run_preflight_passes(
+    agent_python: str,
+    worktree: pathlib.Path,
+    temp_root: pathlib.Path,
+    passes: "Sequence[PreflightPass]",
+    probe_module: str,
+    timeout: float,
+    max_output: int,
+    two_pass_mode: bool,
+) -> Optional[str]:
+    """Run the node lane then the pytest passes under per-phase budgets.
+
+    Extracted verbatim from ``run_hermetic_pytest`` (which had outgrown the
+    300-line function debt gate): two-pass mode carves the resolved total with
+    ``_preflight_phase_budgets``; single-pass mode keeps the whole-remainder
+    semantics. Returns ``None`` on green, otherwise the typed bounded block.
+    """
+    from ouroboros.platform_layer import kill_processes_referencing
+
+    if two_pass_mode:
+        node_budget, parallel_budget, _ = _preflight_phase_budgets(timeout)
+    else:
+        # Legacy single-pass mode keeps today's semantics: every phase may
+        # use the whole remaining budget.
+        node_budget, parallel_budget = timeout, timeout
+    started = time.monotonic()
+    if node_error := (run_node_tests(worktree, temp_root, node_budget, max_output, total_timeout=timeout) or {}).get("error"):
+        return node_error
+    empty_passes = 0
+    for spec in passes:
+        # Per-phase ceilings carved from ONE total (two-pass mode): the
+        # parallel pass runs on its own slice, the serial pass on the exact
+        # float remainder. Never clamped up to a whole second: `max(1, ...)`
+        # would hand an already-exhausted budget another second, and int()
+        # truncation would round a 0.9s remainder up to 1s — both let the
+        # gate outrun the total it advertises.
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            return (
+                f"⚠️ PRE_PUSH_TEST_ERROR: the {spec.label} pass never started — the "
+                f"total budget of {timeout} seconds was exhausted by the earlier pass(es)"
+            )
+        # In two-pass mode a parallel-labelled pass runs on its slice, not
+        # on the whole remainder; legacy mode preserves the old behavior.
+        pass_budget = parallel_budget if (two_pass_mode and spec.parallel) else remaining
+        # `started` sizes the shared budget; the header reports THIS pass's
+        # own duration, or a fast serial pass would be blamed for the whole
+        # gate's wall-clock after a slow parallel one.
+        pass_started = time.monotonic()
+        returncode, output, reap_error = _execute_pytest_pass(
+            agent_python, worktree, temp_root, spec.args, pass_budget
+        )
+        elapsed = time.monotonic() - pass_started
+        # Sweep between passes so a pass-1 escapee cannot touch pass 2.
+        kill_processes_referencing(str(temp_root))
+        if reap_error:
+            # Checked BEFORE the exit code, including before the green path:
+            # the scan says processes the pass spawned are still running (or
+            # that it cannot tell), and an exit 0 taken on top of that is
+            # exactly the fail-open the container exists to close. It is also
+            # the more urgent report — a live tree outlives this whole run.
+            return _diagnosis(
+                "⚠️ PRE_PUSH_TEST_ERROR: PREFLIGHT_CONTAINMENT_FAILED (hard block): "
+                f"the {spec.label} pass ran, but processes it spawned were still "
+                "alive afterwards (or could not be determined to be gone)",
+                "The container DETECTS leaked processes; it does not promise to kill "
+                "them, and a process it cannot inspect counts as leaked. The pass "
+                "verdict is not accepted, whatever it was, because a leaked tree "
+                "survives into the next pass and past teardown. Find the test that "
+                "spawns a real process, binds a real port, or daemonises a helper "
+                "and does not wait for it — make it clean up, and mark it "
+                "@pytest.mark.serial if it must own real processes; never a "
+                "flake/retry. Kill any pid named below before re-running; when the "
+                "report names none it states the reason instead — read that line, "
+                "since more than one cause leaves no pid to name.",
+                reap_error, max_output,
+            )
+        if returncode is None:
+            return _with_timeout_excerpt(
+                f"⚠️ PRE_PUSH_TEST_ERROR: pytest timed out after {pass_budget:.0f} seconds "
+                f"in the {spec.label} pass (phase budget {pass_budget:.0f} of total {timeout} seconds)",
+                output, max_output,
+            )
+        if returncode == _PYTEST_EXIT_NO_TESTS:
+            empty_passes += 1
+            continue
+        if returncode == 0 and probe_module in spec.args:
+            # A GREEN parallel pass is the only place this can go unnoticed:
+            # a red one blocks anyway, and an empty one had nothing to
+            # distribute. The probe flag is the key (not `spec.parallel`) so
+            # a caller-supplied argv carrying its own `-n` — which never gets
+            # the probe — is not blocked for evidence it was never asked for.
+            # Keyed on the NONCE name that was actually threaded into the
+            # argv: testing the bare stem here would never match again, and
+            # would silently disable the very block the nonce protects.
+            observed = _observed_worker_ids(temp_root)
+            if len(observed) < _MIN_PREFLIGHT_WORKERS:
+                return _diagnosis(
+                    "⚠️ PRE_PUSH_TEST_ERROR: PREFLIGHT_PARALLELISM_LOST (hard block): "
+                    f"the {spec.label} pass returned green on {len(observed)} xdist "
+                    f"worker(s), fewer than the {_MIN_PREFLIGHT_WORKERS} it requires",
+                    "A pass that never ran concurrently proves nothing about the "
+                    "parallel-only defects this gate exists to catch, so it is not "
+                    "accepted as green. Check the repository's pytest configuration for "
+                    "an addopts entry that disables xdist, and the interpreter for a "
+                    "pytest-xdist that cannot start workers. Set "
+                    "OUROBOROS_PREFLIGHT_SERIAL=1 to take the legacy single serial pass "
+                    "deliberately instead of getting a silently serial one.",
+                    "workers observed: " + (", ".join(sorted(observed)) or "none"),
+                    max_output,
+                )
+        if returncode != 0:
+            # The EXIT CODE decides that this pass failed; the rendered text
+            # only decides how it reads. Gating the return on the diagnosis
+            # being truthy made a budget too small to render one turn a red
+            # pass into a green gate.
+            failure = _classify_pass_result(
+                spec.label, returncode, output, max_output,
+                parallel=spec.parallel, agent_python=agent_python, elapsed=elapsed,
+            )
+            return failure or (
+                f"⚠️ PRE_PUSH_TEST_ERROR: {spec.label} pass, exit {returncode}, {elapsed:.0f}s"
+            )
+    if empty_passes == len(passes):
+        return (
+            "⚠️ PRE_PUSH_TEST_ERROR: no tests were collected in any preflight pass — "
+            "a repository with a tests/ directory must yield at least one runnable test"
+        )
+    return None
+
+
 def run_hermetic_pytest(
     repo_dir: pathlib.Path | str,
     *,
@@ -1198,7 +1355,8 @@ def run_hermetic_pytest(
 
     Mirrors CI: the web node lane (``preflight_node``, on candidates carrying
     ``web/tests/*.test.js``), then a parallel ``not serial`` pass, then a
-    ``serial`` pass — one worktree/env, ONE shared total budget. Fails fast on
+    ``serial`` pass — one worktree/env, per-phase budgets carved from one resolved
+    total. Fails fast on
     the first red lane, so the output never truncates the failing section away.
 
     Returns ``None`` on success, otherwise a bounded human-readable error.
@@ -1367,107 +1525,11 @@ def run_hermetic_pytest(
                 "error in the body below. This is not a test failure.",
                 str(exc), max_output,
             )
-        from ouroboros.platform_layer import kill_processes_referencing
-        started = time.monotonic()
-        if node_error := (run_node_tests(worktree, temp_root, timeout, max_output) or {}).get("error"):
-            return node_error
-        empty_passes = 0
-        for spec in passes:
-            # ONE total budget across passes; the later pass gets the exact
-            # float remainder. Never clamped up to a whole second: `max(1, ...)`
-            # would hand an already-exhausted budget another second, and int()
-            # truncation would round a 0.9s remainder up to 1s — both let the
-            # gate outrun the total it advertises.
-            remaining = timeout - (time.monotonic() - started)
-            if remaining <= 0:
-                return (
-                    f"⚠️ PRE_PUSH_TEST_ERROR: the {spec.label} pass never started — the "
-                    f"total budget of {timeout} seconds was exhausted by the earlier pass(es)"
-                )
-            # `started` sizes the shared budget; the header reports THIS pass's
-            # own duration, or a fast serial pass would be blamed for the whole
-            # gate's wall-clock after a slow parallel one.
-            pass_started = time.monotonic()
-            returncode, output, reap_error = _execute_pytest_pass(
-                agent_python, worktree, temp_root, spec.args, remaining
-            )
-            elapsed = time.monotonic() - pass_started
-            # Sweep between passes so a pass-1 escapee cannot touch pass 2.
-            kill_processes_referencing(str(temp_root))
-            if reap_error:
-                # Checked BEFORE the exit code, including before the green path:
-                # the scan says processes the pass spawned are still running (or
-                # that it cannot tell), and an exit 0 taken on top of that is
-                # exactly the fail-open the container exists to close. It is also
-                # the more urgent report — a live tree outlives this whole run.
-                return _diagnosis(
-                    "⚠️ PRE_PUSH_TEST_ERROR: PREFLIGHT_CONTAINMENT_FAILED (hard block): "
-                    f"the {spec.label} pass ran, but processes it spawned were still "
-                    "alive afterwards (or could not be determined to be gone)",
-                    "The container DETECTS leaked processes; it does not promise to kill "
-                    "them, and a process it cannot inspect counts as leaked. The pass "
-                    "verdict is not accepted, whatever it was, because a leaked tree "
-                    "survives into the next pass and past teardown. Find the test that "
-                    "spawns a real process, binds a real port, or daemonises a helper "
-                    "and does not wait for it — make it clean up, and mark it "
-                    "@pytest.mark.serial if it must own real processes; never a "
-                    "flake/retry. Kill any pid named below before re-running; when the "
-                    "report names none it states the reason instead — read that line, "
-                    "since more than one cause leaves no pid to name.",
-                    reap_error, max_output,
-                )
-            if returncode is None:
-                return _with_timeout_excerpt(
-                    f"⚠️ PRE_PUSH_TEST_ERROR: pytest timed out after {remaining:.0f} seconds "
-                    f"in the {spec.label} pass (total budget {timeout} seconds)",
-                    output, max_output,
-                )
-            if returncode == _PYTEST_EXIT_NO_TESTS:
-                empty_passes += 1
-                continue
-            if returncode == 0 and probe_module in spec.args:
-                # A GREEN parallel pass is the only place this can go unnoticed:
-                # a red one blocks anyway, and an empty one had nothing to
-                # distribute. The probe flag is the key (not `spec.parallel`) so
-                # a caller-supplied argv carrying its own `-n` — which never gets
-                # the probe — is not blocked for evidence it was never asked for.
-                # Keyed on the NONCE name that was actually threaded into the
-                # argv: testing the bare stem here would never match again, and
-                # would silently disable the very block the nonce protects.
-                observed = _observed_worker_ids(temp_root)
-                if len(observed) < _MIN_PREFLIGHT_WORKERS:
-                    return _diagnosis(
-                        "⚠️ PRE_PUSH_TEST_ERROR: PREFLIGHT_PARALLELISM_LOST (hard block): "
-                        f"the {spec.label} pass returned green on {len(observed)} xdist "
-                        f"worker(s), fewer than the {_MIN_PREFLIGHT_WORKERS} it requires",
-                        "A pass that never ran concurrently proves nothing about the "
-                        "parallel-only defects this gate exists to catch, so it is not "
-                        "accepted as green. Check the repository's pytest configuration for "
-                        "an addopts entry that disables xdist, and the interpreter for a "
-                        "pytest-xdist that cannot start workers. Set "
-                        "OUROBOROS_PREFLIGHT_SERIAL=1 to take the legacy single serial pass "
-                        "deliberately instead of getting a silently serial one.",
-                        "workers observed: " + (", ".join(sorted(observed)) or "none"),
-                        max_output,
-                    )
-            if returncode != 0:
-                # The EXIT CODE decides that this pass failed; the rendered text
-                # only decides how it reads. Gating the return on the diagnosis
-                # being truthy made a budget too small to render one turn a red
-                # pass into a green gate.
-                failure = _classify_pass_result(
-                    spec.label, returncode, output, max_output,
-                    parallel=spec.parallel, agent_python=agent_python, elapsed=elapsed,
-                )
-                return failure or (
-                    f"⚠️ PRE_PUSH_TEST_ERROR: {spec.label} pass, exit {returncode}, {elapsed:.0f}s"
-                )
-        if empty_passes == len(passes):
-            return (
-                "⚠️ PRE_PUSH_TEST_ERROR: no tests were collected in any preflight pass — "
-                "a repository with a tests/ directory must yield at least one runnable test"
-            )
-        return None
+        two_pass_mode = pytest_args is None and not _serial_escape_hatch_enabled()
+        return _run_preflight_passes(
+            agent_python, worktree, temp_root, passes, probe_module,
+            timeout, max_output, two_pass_mode,
+        )
     except subprocess.TimeoutExpired:
         return f"⚠️ PRE_PUSH_TEST_ERROR: pytest timed out after {timeout} seconds"
     except FileNotFoundError:

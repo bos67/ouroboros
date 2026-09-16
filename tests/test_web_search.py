@@ -360,6 +360,8 @@ def test_web_search_backend_pin_openai_hard_fails_no_cascade(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_emits_progress_on_search(ctx, patch_env, mock_openai):
     events = [
         _make_event("response.web_search_call.in_progress", item_id="ws1", output_index=0, sequence_number=1),
@@ -386,6 +388,8 @@ def test_streaming_emits_progress_on_search(ctx, patch_env, mock_openai):
     assert call_kwargs["stream"] is True
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_direct_openai_cost_remains_nullable(ctx, patch_env, mock_openai):
     events = [
         _make_event("response.output_text.delta", delta="Answer", content_index=0,
@@ -410,6 +414,8 @@ def test_streaming_direct_openai_cost_remains_nullable(ctx, patch_env, mock_open
     assert ev["cost"] is None
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_returns_cited_sources(ctx, patch_env, mock_openai):
     class _Usage:
         def model_dump(self):
@@ -450,6 +456,8 @@ def test_streaming_returns_cited_sources(ctx, patch_env, mock_openai):
     }]
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_sanitizes_progress_and_cited_sources(ctx, patch_env, mock_openai):
     leaked_secret = "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789"
 
@@ -830,6 +838,8 @@ def test_streamed_web_503_preserves_status_for_one_safe_retry(ctx, patch_env, mo
     assert result["answer"] == "recovered from event"
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_no_progress_without_search_events(ctx, patch_env, mock_openai):
     events = [
         _make_event("response.output_text.delta", delta="Direct answer", content_index=0,
@@ -845,6 +855,8 @@ def test_streaming_no_progress_without_search_events(ctx, patch_env, mock_openai
     assert data["answer"] == "Direct answer"
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_empty_text_engages_cascade(ctx, patch_env, mock_openai):
     """NW-11: an empty OpenAI result (no text AND no sources) is a soft failure,
     not a successful "(no answer)" — it must fall through to the provider
@@ -862,6 +874,8 @@ def test_streaming_empty_text_engages_cascade(ctx, patch_env, mock_openai):
     assert any("no answer and no sources" in e for e in data.get("backend_errors", []))
 
 
+# PARALLEL_WORKER_CRASH: streaming test crashed an xdist worker (gw1, 2026-09-15 gate run) — sanctioned serial criterion (docs/CHECKLISTS.md).
+@pytest.mark.serial
 def test_streaming_progress_fires_only_once(ctx, patch_env, mock_openai):
     events = [
         _make_event("response.web_search_call.in_progress", item_id="ws1", output_index=0, sequence_number=1),
