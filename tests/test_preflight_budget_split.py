@@ -11,6 +11,7 @@ live here so both contracts stay in one place).
 
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 import textwrap
@@ -273,7 +274,7 @@ def test_parallel_pass_expiry_names_phase_budget_and_total(tmp_path, monkeypatch
 def test_node_pass_expiry_reports_phase_budget_and_total(tmp_path, monkeypatch):
     """The node lane names its own slice and the whole total when it expires.
     The container layer is stood in by a fake whose spawn hangs forever."""
-    from ouroboros import preflight_node as pn
+    from ouroboros import platform_layer, preflight_node as pn, preflight_runner
     from ouroboros.process_containment import ProcessContainer
 
     worktree = tmp_path / "repo"
@@ -283,7 +284,7 @@ def test_node_pass_expiry_reports_phase_budget_and_total(tmp_path, monkeypatch):
     )
 
     class _FakeProc:
-        pid = 12345
+        pid = os.getpid() + 1_000_000  # non-colliding convention (sibling tests)
         stdout = None
         stderr = None
         returncode = None
@@ -304,6 +305,7 @@ def test_node_pass_expiry_reports_phase_budget_and_total(tmp_path, monkeypatch):
     monkeypatch.setattr(ProcessContainer, "spawn", _fake_spawn)
     monkeypatch.setattr(ProcessContainer, "reap", lambda self: "")
     monkeypatch.setattr(ProcessContainer, "close", lambda self: None)
+    monkeypatch.setattr(preflight_runner, "_terminate_preflight_tree", lambda proc, root: None)
     monkeypatch.setattr(pn, "resolve_node", lambda: "/fake/node")
     monkeypatch.setattr(pn, "probe_node_version", lambda node: "22.0.0")
 

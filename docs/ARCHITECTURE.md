@@ -1,4 +1,4 @@
-# Ouroboros v6.117.0 — Architecture & Reference
+# Ouroboros v6.117.1 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -1469,7 +1469,7 @@ Ouroboros uses provider-specific names for the same output-token budget: OpenRou
 | OUROBOROS_REVIEW_MODEL_TIMEOUT_SEC | (unset) | Env-only logical review window; absent = API settles by transport, session inherits absolute ceiling, owner deadline narrows; present narrows only the slot wait, never an HTTP timeout; lost custody stays unresolved |
 | OUROBOROS_REVIEW_MAX_TOKENS | 65536 | Env-only; reviewer RESPONSE reservation; may lower (floor 8192, never above default) when a mega-diff pack + output exceeds an endpoint's cap; never changes reviewer models |
 | OUROBOROS_REVIEW_ENFORCEMENT | advisory | `blocking` blocks critical findings, fresh-advisory open obligations/debts, skill `blockers`; `advisory` downgrades; fresh advisory with obligations writes `advisory_obligations_acknowledged`; stale advisory blocks; skill warnings never block |
-| OUROBOROS_PREFLIGHT_TIMEOUT_SEC | 900 | TOTAL budget: hermetic pytest preflight (`preflight_runner.run_hermetic_pytest`, review+prepush); node lane + both passes (serial = total−elapsed); crash → teardown + sweep BETWEEN passes; containment = DETECTION, not kill; `ProcessContainer` (POSIX group + env token / Windows Job) spawns pytest, `finally`-reaped; kernel membership (`pids_with_env_marker`); alive/undeterminable = HARD BLOCK; spawns, never adopts |
+| OUROBOROS_PREFLIGHT_TIMEOUT_SEC | 2700 | TOTAL budget: hermetic pytest preflight (`preflight_runner.run_hermetic_pytest`, review+prepush); carved into per-phase ceilings — node ≤ 5% capped at 120s, parallel 80% of the remainder, serial the exact unrounded remainder (`_preflight_phase_budgets`); a phase expiry names its slice and the total; crash → teardown + sweep BETWEEN passes; containment = DETECTION, not kill; `ProcessContainer` (POSIX group + env token / Windows Job) spawns pytest, `finally`-reaped; kernel membership (`pids_with_env_marker`); alive/undeterminable = HARD BLOCK; spawns, never adopts |
 | OUROBOROS_PREFLIGHT_SERIAL | unset | `1` forces legacy single serial pass; scrubbed by `_preflight_env` |
 | OUROBOROS_AUTO_GRANT_REVIEWED_SKILLS | true | Default-on; fresh review grants only manifest-declared keys/permissions for that hash. `blocking`: blockers not executable/no auto-grant; `advisory`: may (mode makes it executable). `/api/settings` drops it; desktop bridge, web `/api/owner/auto-grant` |
 | OUROBOROS_TRUST_NATIVE_SEEDED_SKILLS | true | Hash-pinned exception to manual first review (CHECKLISTS §Skills): LAUNCHER-written `.seed-origin` natives stamp `review.json status=clean` (`reviewer_models=["repo_commit_gate"]`, `native_seed`); zero-grant skills auto-enable; later edit flips stale; marker gone → pending; launcher seed/resync only |
