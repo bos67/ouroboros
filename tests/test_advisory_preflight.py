@@ -169,7 +169,7 @@ class TestPreflightGatesBeforeSDK:
         )
         monkeypatch.setattr(
             adv, "build_advisory_changed_context",
-            lambda repo_dir, changed_files_text, paths=None, exclude_paths=None:
+            lambda repo_dir, changed_files_text, paths=None, exclude_paths=None, inline_policy="full":
                 (["broken.py"], "(touched pack)", []),
         )
 
@@ -223,8 +223,8 @@ class TestPreflightGatesBeforeSDK:
         )
         monkeypatch.setattr(
             adv, "build_advisory_changed_context",
-            lambda repo_dir, changed_files_text, paths=None, exclude_paths=None:
-                (["good.py"], "(touched pack)", []),
+            lambda repo_dir, changed_files_text, paths=None, exclude_paths=None, inline_policy="full":
+                (policy_seen.__setitem__("v", inline_policy), ["good.py"], "(touched pack)", [])[1:],
         )
         monkeypatch.setattr(
             adv, "_build_advisory_prompt",
@@ -234,6 +234,7 @@ class TestPreflightGatesBeforeSDK:
         # Fake SDK that returns a canned empty-items response to confirm
         # we reached the SDK path.
         sdk_called = {"n": 0}
+        policy_seen = {"v": None}
 
         class _Result:
             success = False  # triggers early return via `_format_advisory_error`
@@ -269,6 +270,9 @@ class TestPreflightGatesBeforeSDK:
 
         assert sdk_called["n"] == 1, "SDK should have been invoked for valid .py"
         assert "PREFLIGHT_BLOCKED" not in raw
+        assert policy_seen["v"] == "compact", (
+            "the advisory call-site must opt into the compact inline policy"
+        )
 
 
 class TestHandleAdvisoryPreReviewSurfacesPreflightBlocked:

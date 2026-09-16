@@ -1,8 +1,9 @@
 """Shared helpers for the review stack (advisory, triad, scope reviews).
 
-No imports from other ouroboros.tools modules to avoid circular deps; the one
-sanctioned exception is the ``release_sync`` compatibility re-export of
-``check_worktree_version_sync`` (moved to its version-sync home).
+No imports from other ouroboros.tools modules to avoid circular deps; the
+sanctioned exceptions are the backward-compat re-exports ``release_sync``
+(``check_worktree_version_sync``) and ``advisory_pack_policy`` (advisory
+inline-policy constants, 6.118.0; the leaf imports back only lazily).
 """
 
 from __future__ import annotations
@@ -331,6 +332,14 @@ BINARY_EXTENSIONS = frozenset({
 })
 
 _FILE_SIZE_LIMIT = 1_048_576  # 1 MB per file
+# Advisory compact inline policy (6.118.0) lives in the advisory_pack_policy
+# leaf module; re-imported here for backward compatibility with existing
+# callers/tests. See ouroboros/tools/advisory_pack_policy.py.
+from ouroboros.tools.advisory_pack_policy import (  # noqa: E402
+    _ADVISORY_INLINE_FILE_LIMIT,
+    _LOCKFILE_NAMES,
+    compact_omission_row,
+)
 # File-classification constants shared by legacy pack helpers and generated atlases.
 _SENSITIVE_EXTENSIONS = frozenset({
     ".env", ".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
@@ -922,8 +931,17 @@ def build_touched_file_pack(
     represent_binary: bool = False,
     m0_tree: str = "",  # managed resolutions: binary rows carry the M0 baseline identity
     staged_tree: str = "",
+    inline_policy: str = "full",
 ) -> tuple[str, list[str]]:
-    """Read changed files into a prompt code pack plus omission list."""
+    """Read changed files into a prompt code pack plus omission list.
+
+    ``inline_policy``: ``"full"`` (default) inlines content up to
+    ``_FILE_SIZE_LIMIT`` exactly as before — every non-advisory caller keeps
+    its contract byte-for-byte. ``"compact"`` (advisory touched pack)
+    renders metadata rows via ``compact_omission_row`` (advisory_pack_policy
+    leaf) instead of content for lockfiles and files ≥ 128 KB; every such
+    row names the reason and the byte size — no silent truncation.
+    """
     if paths is None:
         paths = list_changed_paths_from_git_status(repo_dir)
 
@@ -985,6 +1003,11 @@ def build_touched_file_pack(
             continue
         try:
             size = fp.stat().st_size
+            omission_row = compact_omission_row(inline_policy, fname_lower, rel, size)
+            if omission_row is not None:
+                omitted.append(rel)
+                parts.append(omission_row)
+                continue
             if size > _FILE_SIZE_LIMIT:
                 omitted.append(rel)
                 parts.append(f"### {rel}\n\n*(omitted — {size:,} bytes exceeds {_FILE_SIZE_LIMIT:,} byte limit)*\n")
@@ -1011,21 +1034,18 @@ def build_advisory_changed_context(
     changed_files_text: str,
     paths: list[str] | None = None,
     exclude_paths: set[str] | None = None,
+    inline_policy: str = "full",
 ) -> tuple[list[str], str, list[str]]:
-    """Resolve changed paths and build advisory touched-file context."""
-    resolved_paths = (
-        list(paths)
-        if paths is not None
-        else parse_changed_paths_from_porcelain(changed_files_text)
+    """Resolve changed paths and build advisory touched-file context.
+
+    Shim: impl (compact default) in advisory_pack_policy.py; re-export keeps
+    imports/monkeypatch targets stable.
+    """
+    from ouroboros.tools.advisory_pack_policy import (
+        build_advisory_changed_context as _impl
     )
-    filtered_paths = [
-        p for p in resolved_paths
-        if p not in (exclude_paths or set())
-    ]
-    touched_pack, omitted = build_touched_file_pack(repo_dir, filtered_paths if filtered_paths is not None else None)
-    if not touched_pack.strip():
-        touched_pack = "(no touched files)"
-    return resolved_paths, touched_pack, omitted
+    return _impl(repo_dir, changed_files_text=changed_files_text, paths=paths,
+                 exclude_paths=exclude_paths, inline_policy=inline_policy)
 
 
 def build_blocking_findings_json_section(

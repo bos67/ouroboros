@@ -1,4 +1,4 @@
-# Ouroboros v6.117.1 — Architecture & Reference
+# Ouroboros v6.118.0 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -311,7 +311,8 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       │   ├── release_sync.py ← Release-metadata sync library; P9 caps via `check_history_limit`
       │   ├── review_synthesis.py ← Shared review-synthesis helpers; plan parser/aggregator in plan_spec.py
       │   ├── ci.py ← CI trigger + monitoring (GitHub Actions API)
-      │   ├── claude_advisory_review.py ← Preflight (advisory) pre-commit review tool — `preflight_review`, alias `advisory_review`
+      │   ├── advisory_pack_policy.py ← Advisory touched-pack inline policy leaf: lockfile/≥128KB metadata rows + `build_advisory_changed_context` (6.118.0)
+      │   ├── claude_advisory_review.py ← Preflight (advisory) pre-commit review tool — `preflight_review`, alias `advisory_review`; touched-pack built with inline_policy='compact' (6.118.0)
       │   ├── recent_tasks.py ← Read-only context recovery over task_results summaries/traces
       │   ├── commit_gate.py ← Advisory freshness gate + commit-attempt recording + Max-Review-Cycles machinery
       │   ├── git_rollback.py ← vcs_rollback tool (wraps git_ops.rollback_to_version)

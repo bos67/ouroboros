@@ -1136,6 +1136,7 @@ def _run_claude_advisory(
                 changed_files_text=changed_files_text,
                 paths=context_paths,
                 exclude_paths={"docs/ARCHITECTURE.md"},
+                inline_policy="compact",
             )
             preflight_err = _syntax_preflight_staged_py_files(repo_dir, resolved_paths)
             if preflight_err:
