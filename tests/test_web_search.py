@@ -808,6 +808,9 @@ def test_explicit_web_503_allows_one_safe_retry(ctx, patch_env, monkeypatch):
     assert result["answer"] == "recovered"
 
 
+@pytest.mark.serial
+# serial per the sanctioned PARALLEL_WORKER_CRASH criterion: gw1 died on this
+# streaming test during the 6.118.1 preflight (2026-09-17 gate run).
 def test_streamed_web_503_preserves_status_for_one_safe_retry(ctx, patch_env, monkeypatch):
     calls = 0
 

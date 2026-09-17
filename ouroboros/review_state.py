@@ -1636,22 +1636,38 @@ def invalidate_advisory_after_mutation(
     changed_paths: Optional[List[str]] = None,
     source_tool: str = "",
 ) -> None:
-    """Invalidate advisory freshness after mutation; ambiguous repo scope stales all."""
+    """Invalidate advisory freshness after a worktree mutation.
+
+    Scope rule (P2, closes the crd-0001 reopen class): a mutation whose
+    locatable paths all sit OUTSIDE any git repository invalidates nothing —
+    scratch files under task_drive, /tmp, or runtime data must not stale a
+    repository's advisory snapshot. Unknown scope (no root and no usable
+    paths) and genuinely multi-repo scope still stale everything,
+    conservatively. Fail-closed is preserved at the gate itself: freshness is
+    hash-keyed, so a missed invalidation can only surface as a no-advisory
+    block, never as silently-fresh review.
+    """
     try:
         changed_paths = [str(p).strip() for p in (changed_paths or []) if str(p).strip()]
-        resolved_repo_keys = _resolve_mutation_repo_keys(mutation_root, changed_paths)
+        repo_keys, scope_known = _resolve_mutation_repo_scope(mutation_root, changed_paths)
+        if scope_known and not repo_keys:
+            log.debug(
+                "advisory freshness kept: mutation outside any git repo (%s)",
+                _build_invalidation_reason(source_tool, mutation_root, changed_paths, []),
+            )
+            return
         reason_ts = _utc_now()
-        reason = _build_invalidation_reason(source_tool, mutation_root, changed_paths, resolved_repo_keys)
+        reason = _build_invalidation_reason(source_tool, mutation_root, changed_paths, repo_keys)
 
         def _mutate(state: AdvisoryReviewState) -> None:
-            if not resolved_repo_keys or len(resolved_repo_keys) != 1:
+            if len(repo_keys) != 1:
                 state.mark_repo_stale(repo_key="", reason_ts=reason_ts, reason=reason, stale_repo_key="")
                 return
             state.mark_repo_stale(
-                repo_key=resolved_repo_keys[0],
+                repo_key=repo_keys[0],
                 reason_ts=reason_ts,
                 reason=reason,
-                stale_repo_key=resolved_repo_keys[0],
+                stale_repo_key=repo_keys[0],
             )
 
         update_state(drive_root, _mutate)
@@ -2151,28 +2167,71 @@ def _prepare_state_for_persistence(state: AdvisoryReviewState) -> None:
         _infer_next_prefixed_sequence(debts, "crd-"),
     )
 
-def _resolve_mutation_repo_keys(
+def _discovered_repo_dir(path: pathlib.Path) -> Optional[pathlib.Path]:
+    """Return the nearest directory containing .git, else ``None``.
+
+    Unlike :func:`discover_repo_root` this never invents a pseudo repo root
+    for a path outside any repository — callers use the ``None`` result to
+    mean "this mutation does not belong to any git repo".
+    """
+    resolved = path.resolve()
+    current = resolved if resolved.is_dir() else resolved.parent
+    while True:
+        if (current / ".git").exists():
+            return current
+        if current.parent == current:
+            return None
+        current = current.parent
+
+
+def _resolve_mutation_repo_scope(
     mutation_root: pathlib.Path | None,
     changed_paths: List[str],
-) -> List[str]:
+) -> tuple[List[str], bool]:
+    """Resolve which git repos a worktree mutation may have touched.
+
+    Returns ``(repo_keys, scope_known)``. Attribution is narrowed to REAL
+    repos discovered from LOCATABLE paths (P2 fix, crd-0001 reopen class): a
+    scratch file under task_drive, /tmp, or runtime data must not invalidate
+    a repository's advisory snapshot, and an unlocatable path — e.g. an
+    absolute path that lost its leading slash and was glued onto the mutation
+    root — contributes nothing instead of inheriting the root's repo. When
+    the caller provides neither a mutation root nor usable paths, scope is
+    UNKNOWN and the caller falls back conservatively (stale everything).
+    """
     base = mutation_root.resolve() if mutation_root is not None else None
     repo_keys: List[str] = []
+    locatable = 0
 
     def _record(candidate: pathlib.Path) -> None:
-        key = make_repo_key(candidate)
-        if key and key not in repo_keys:
+        repo_dir = _discovered_repo_dir(candidate)
+        if repo_dir is None:
+            return
+        key = str(repo_dir)
+        if key not in repo_keys:
             repo_keys.append(key)
 
-    if base is not None:
-        _record(base)
+    if not changed_paths:
+        if base is not None:
+            _record(base)
+        return repo_keys, base is not None
+
     for rel_path in changed_paths:
         candidate = pathlib.Path(rel_path)
-        if not candidate.is_absolute() and base is not None:
-            candidate = (base / rel_path).resolve()
-        elif not candidate.is_absolute():
-            continue
-        _record(candidate if candidate.exists() else candidate.parent)
-    return repo_keys
+        if not candidate.is_absolute():
+            if base is None:
+                continue
+            candidate = base / rel_path
+        candidate = candidate.resolve()
+        if candidate.exists() or candidate.parent.exists():
+            locatable += 1
+            _record(candidate if candidate.exists() else candidate.parent)
+    # Scope honesty (advisory findings, 6.118.1): scope_known requires a
+    # LOCATABLE path — not merely a passed path list. Paths handed in but
+    # entirely unlocatable are unusable evidence for either conclusion, so
+    # that is UNKNOWN scope and the caller stales everything conservatively.
+    # Only a locatable path may prove "outside any repo" and keep freshness.
+    return repo_keys, locatable > 0
 
 
 def _build_invalidation_reason(
