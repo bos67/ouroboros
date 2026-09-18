@@ -684,11 +684,22 @@ def _str_match_replace(
     error prefix (e.g. ``STR_REPLACE_ERROR`` / ``EDIT_TEXT_ERROR``)."""
     count = text.count(old_str)
     if count == 0:
-        preview = text[:2000]
-        return None, (
+        from ouroboros.secret_masking import mask_secret_bytes
+        from ouroboros.tools.edit_support import nearest_fragment_hints
+
+        # Egress seam (P3/security): this shared seam serves user_files edits
+        # too, where raw credential bytes must not reach model-visible error
+        # output (only successful reads/searches passed through masking before;
+        # a count==0 preview bypassed it). Mask BEFORE building the message.
+        preview, _masked = mask_secret_bytes(text[:2000])
+        message = (
             f"⚠️ {error_tag}: old_str not found in {display_path}.\n"
             f"File preview (first 2000 chars):\n{preview}"
         )
+        hint = nearest_fragment_hints(text, old_str)
+        if hint:
+            message += f"\n{hint}"
+        return None, message
     if count > 1:
         positions = []
         start = 0

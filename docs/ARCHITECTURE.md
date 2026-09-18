@@ -1,4 +1,4 @@
-# Ouroboros v6.118.1 — Architecture & Reference
+# Ouroboros v6.118.2 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -330,6 +330,7 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       │   ├── review_context_atlas.py ← Deterministic bounded-context compiler for scope/deep review
       │   ├── query_code.py ← Read-only structured code intelligence tool (`query_code`) over the inventory
       │   ├── edit_ops.py ← Advanced repo editing: `apply_patch` (anchored multi-file), `edit_batch` (counted replacements)
+      │   ├── edit_support.py ← Pure edit-recovery helpers: nearest-fragment/path hints for exact-miss refusals (6.118.2, stale-anchor class)
       │   ├── media.py ← Media tools: `ocr_pdf`, `youtube_transcript`, `extract_video_frames` (typed unavailable notices)
       │   ├── verify.py ← `verify_and_record`: HOST runs declared check, writes durable host-attested receipt (`verification_receipts.jsonl`, `contract_kind="delegation_zero_run"`, `ZERO_RUN_WRITE_DECISIONS`)
       │   ├── review_helpers.py ← Shared review helpers (packs, preflight, intent, checklist)

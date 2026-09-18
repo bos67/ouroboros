@@ -1012,33 +1012,64 @@ def _run_llm_check(
         else:
             update_budget_from_usage(usage_payload)
 
-    try:
-        msg, usage = _safety_model_call(
-            client=client, ctx=ctx, tool_name=tool_name, light_model=light_model,
-            use_local=_use_local_light, call_type="safety_supervisor",
-            user_prompt=prompt, on_usage=_emit_safety_usage,
-        )
-    except _SafetyRateLimited as e:
-        return _rate_limited_outcome(
-            ctx, tool_name, str(e),
-            local_fallback=_use_local_light and _is_local_fallback,
-            arm_latch=not getattr(e, "latched", False),
-            attempts=getattr(e, "attempts", 2),
-        )
-    except Exception as e:
-        safe_error = sanitize_tool_result_for_log(f"{type(e).__name__}: {e}")
-        # Fallback local outage warns instead of blocking all unknown tools.
-        if _use_local_light and _is_local_fallback:
-            log.warning(
-                "Safety local-fallback LLM call failed for %s (%s); proceeding with warning",
-                tool_name, safe_error,
+    attempts = 0
+    while True:
+        try:
+            msg, usage = _safety_model_call(
+                client=client, ctx=ctx, tool_name=tool_name, light_model=light_model,
+                use_local=_use_local_light, call_type="safety_supervisor",
+                user_prompt=prompt, on_usage=_emit_safety_usage,
             )
-            return True, (
-                f"⚠️ SAFETY_WARNING: Local safety runtime unreachable ({safe_error}). "
-                f"{_UNCHECKED_WARNING_SUFFIX}"
+            break
+        except _SafetyRateLimited as e:
+            return _rate_limited_outcome(
+                ctx, tool_name, str(e),
+                local_fallback=_use_local_light and _is_local_fallback,
+                arm_latch=not getattr(e, "latched", False),
+                attempts=getattr(e, "attempts", 2),
             )
-        log.error("Safety check LLM call failed for %s: %s", tool_name, safe_error)
-        return False, f"⚠️ SAFETY_VIOLATION: Safety check failed with error: {safe_error}"
+        except Exception as e:
+            safe_error = sanitize_tool_result_for_log(f"{type(e).__name__}: {e}")
+            # Fallback local outage warns instead of blocking all unknown tools.
+            if _use_local_light and _is_local_fallback:
+                log.warning(
+                    "Safety local-fallback LLM call failed for %s (%s); proceeding with warning",
+                    tool_name, safe_error,
+                )
+                return True, (
+                    f"⚠️ SAFETY_WARNING: Local safety runtime unreachable ({safe_error}). "
+                    f"{_UNCHECKED_WARNING_SUFFIX}"
+                )
+            # One retry for the transport-timeout class only (2026-09-18 error-rate
+            # recheck: 22 of 104 post-rule errors were safety-check APITimeoutError,
+            # every measured retry of the same call succeeded). Rate limits keep the
+            # typed _SafetyRateLimited path above; every other exception class keeps
+            # the exact one-attempt block below — no widening.
+            is_transport_timeout = isinstance(e, TimeoutError) or any(
+                cls.__name__ == "APITimeoutError" for cls in type(e).__mro__
+            )
+            try:
+                import httpx
+
+                is_transport_timeout = is_transport_timeout or isinstance(
+                    e, httpx.TimeoutException
+                )
+            except Exception:
+                pass
+            if attempts < 1 and is_transport_timeout:
+                attempts += 1
+                log.warning(
+                    "Safety check transport timeout for %s (%s); retrying once",
+                    tool_name, safe_error,
+                )
+                _emit_durable_safety_event(ctx, {
+                    "type": "safety_timeout_retry",
+                    "tool": tool_name,
+                    "attempt": attempts,
+                })
+                continue
+            log.error("Safety check LLM call failed for %s: %s", tool_name, safe_error)
+            return False, f"⚠️ SAFETY_VIOLATION: Safety check failed with error: {safe_error}"
 
     result = _parse_safety_response(msg.get("content") or "")
     if result is None:

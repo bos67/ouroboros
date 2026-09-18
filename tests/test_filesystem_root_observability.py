@@ -94,6 +94,28 @@ def test_absolute_path_under_root_is_not_double_prefixed(tmp_path):
     assert ctx.repo_path(str(root / "sub" / "f.py")) == root / "sub" / "f.py"
 
 
+def test_user_files_edit_miss_preview_masks_secret_bytes(tmp_path, monkeypatch):
+    """Egress seam end-to-end (security): a user_files edit whose old_str misses
+    must not leak credential-shaped bytes through the count==0 file preview —
+    the shared `_str_match_replace` seam serves user_files edits, so the
+    preview rides mask_secret_bytes like every other owner-home egress."""
+    home = tmp_path / "home"
+    (home / "Desktop").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    ctx = _make_ctx(tmp_path)
+    secret = "token = ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0"  # 40+ opaque run
+    creds = home / "Desktop" / "creds.txt"
+    creds.write_text(secret + "\n", encoding="utf-8")
+
+    result = _edit_text(ctx, "Desktop/creds.txt", "old_str that does not match", "x", root="user_files")
+
+    assert "EDIT_TEXT_ERROR" in result
+    assert "File preview" in result
+    assert "a1B2c3D4" not in result, "raw secret bytes leaked into edit error output"
+    assert "***" in result
+
+
 @pytest.mark.skipif(os.name == "nt", reason="os.mkfifo is POSIX-only")
 def test_search_skips_non_regular_files(tmp_path):
     """NW-3: search must never read pseudo-files / device nodes / FIFOs.

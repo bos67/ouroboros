@@ -289,6 +289,55 @@ def test_structured_insufficient_quota_with_429_still_blocks(monkeypatch, tmp_pa
     assert _read_events(ctx, "safety_check_rate_limited") == []
 
 
+def test_transport_timeout_is_retried_once_then_recovers(monkeypatch, tmp_path):
+    """The transport-timeout class (APITimeoutError MRO shape) buys exactly ONE retry;
+    a recovery on attempt 2 returns the ordinary SAFE verdict."""
+    import ouroboros.safety as safety
+    from ouroboros.safety import check_safety
+
+    class APITimeoutError(Exception):
+        pass
+
+    stub = _ScriptedLLMClient([
+        APITimeoutError("Request timed out"),
+        ('{"status":"SAFE","reason":"ok"}', None),
+    ])
+    _patch_llm_client(monkeypatch, stub)
+    ctx = _DriveCtx(tmp_path)
+
+    ok, msg = check_safety("create_github_issue", {"title": "x"}, ctx=ctx)
+
+    assert ok is True
+    assert msg == "", "a recovered check returns the ordinary SAFE verdict"
+    assert len(stub.calls) == 2, "exactly one retry, not a loop"
+    retries = _read_events(ctx, "safety_timeout_retry")
+    assert len(retries) == 1 and retries[0].get("attempt") == 1
+
+
+def test_transport_timeout_twice_still_blocks_with_exact_message(monkeypatch, tmp_path):
+    """A second consecutive timeout exhausts the one retry and keeps TODAY'S exact
+    blocking message — the retry widens nothing else."""
+    import ouroboros.safety as safety
+    from ouroboros.safety import check_safety
+
+    class APITimeoutError(Exception):
+        pass
+
+    stub = _ScriptedLLMClient([APITimeoutError("Request timed out")])
+    _patch_llm_client(monkeypatch, stub)
+    ctx = _DriveCtx(tmp_path)
+
+    ok, msg = check_safety("create_github_issue", {"title": "x"}, ctx=ctx)
+
+    assert ok is False
+    assert msg == (
+        "⚠️ SAFETY_VIOLATION: Safety check failed with error: "
+        "APITimeoutError: Request timed out"
+    )
+    assert len(stub.calls) == 2
+    assert len(_read_events(ctx, "safety_timeout_retry")) == 1
+
+
 def test_non_rate_limit_exception_keeps_todays_violation_path(monkeypatch, tmp_path, _no_backoff):
     """Every other exception class is byte-identical to today: block, one attempt."""
     from ouroboros.safety import check_safety

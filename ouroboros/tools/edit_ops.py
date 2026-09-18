@@ -67,6 +67,7 @@ from ouroboros.tool_access import (
     build_resolved_resource_binding,
 )
 from ouroboros.tools.registry import ToolContext, ToolEntry, active_repo_dir_for
+from ouroboros.tools.edit_support import nearest_fragment_hints, suggest_similar_paths
 from ouroboros.utils import safe_relpath, write_text
 
 log = logging.getLogger(__name__)
@@ -627,7 +628,9 @@ def _edit_batch(
         mutation_binding = mutation_binding or item_binding
         if rel not in contents:
             if not target.exists():
-                errors.append(f"edit {idx} ({rel}): file not found")
+                hint = suggest_similar_paths(target.parent, rel)
+                hint_text = f"\n{hint}" if hint else ""
+                errors.append(f"edit {idx} ({rel}): file not found{hint_text}")
                 continue
             try:
                 contents[rel] = target.read_text(encoding="utf-8")
@@ -640,10 +643,15 @@ def _edit_batch(
         if occurrences != count:
             positions = _line_positions(text, old_str)
             where = f" (at: {', '.join(positions)})" if positions else ""
-            errors.append(
+            message = (
                 f"edit {idx} ({rel}): old_str occurs {occurrences} time(s), expected {count}{where}. "
                 "Re-read the file and set count to the exact number of occurrences you intend to replace."
             )
+            if occurrences == 0:
+                hint = nearest_fragment_hints(text, old_str)
+                if hint:
+                    message += f"\n{hint}"
+            errors.append(message)
             continue
         contents[rel] = text.replace(old_str, new_str)
         applied.append(f"edit {idx} ({rel}): replaced {count} occurrence(s)")

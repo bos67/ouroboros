@@ -1325,6 +1325,28 @@ def _resolve_target_in_selected_base(
         )
     resolved_base = pathlib.Path(base_path).resolve(strict=False)
     path_text = str(path or ".")
+    # Absolute-glue guard (the lost-leading-slash / double-prefix class): a target
+    # spelled as an ABSOLUTE path that already sits under this root must join as a
+    # RELATIVE child, never as base/<absolute-path-minus-slash> (which silently
+    # resolved to a nonexistent nested path like base/home/graphrag/...).
+    # pathlib relative_to, not str comparison (P6 cross-platform): str(resolved_base)
+    # renders NATIVE separators ('C:\\work\\repo' on Windows) while the input text is
+    # forward-slashed, so a string match silently missed there and the absolute text
+    # fell through to re-nesting through safe_relpath instead of the real child.
+    if is_absolute_path_text(path_text):
+        try:
+            input_resolved = pathlib.Path(path_text).resolve(strict=False)
+            try:
+                rel = input_resolved.relative_to(resolved_base)
+            except ValueError:
+                # Case-variant spellings on case-insensitive filesystems are the
+                # same under-the-root class; reuse the existing case-aware rule.
+                if not _path_is_relative_to_casefold(input_resolved, resolved_base):
+                    raise  # genuinely outside; confinement below rejects it
+                rel = pathlib.Path(*input_resolved.parts[len(resolved_base.parts):])
+            path_text = rel.as_posix() or "."
+        except (OSError, ValueError):
+            pass  # outside root: falls through; confinement below rejects canonically
     if root == "runtime_data":
         path_text = normalize_runtime_data_path(resolved_base, path_text)
     elif root in {"active_workspace", "system_repo"}:
