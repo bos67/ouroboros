@@ -463,15 +463,22 @@ _BUMP_SNAPSHOT_PATHS = (
 
 
 def bump_release_version(new_version: str, repo_dir: str) -> List[str]:
-    """Set VERSION to *new_version* and sync every release carrier atomically.
+    """Set VERSION to *new_version* and sync every release carrier in one call.
 
     The single legal path for changing the release version: write VERSION,
-    run ``sync_release_metadata``, then assert zero carrier desyncs. A failed
-    bump rolls every snapshotted file back to its pre-call bytes — a
-    half-synced tree is structurally impossible — and raises naming the
-    failure. A no-op bump (VERSION already equal) raises: idempotent re-sync
-    belongs to ``sync_release_metadata``, a bump is a state transition.
-    Returns the files changed by this call (always includes "VERSION").
+    run ``sync_release_metadata``, then assert zero carrier desyncs. On any
+    raised failure every snapshotted file is restored to its pre-call bytes
+    and the original error re-raises — the common failure modes (invalid
+    version, sync exception, post-sync desync) leave the tree byte-identical.
+    That guarantee is exception-scope recovery, not a process-crash
+    transaction: carrier writes are sequential, a crash mid-write can leave a
+    partially synced tree, and concurrent readers can observe intermediate
+    states; git is the crash-recovery path and re-running
+    ``sync_release_metadata`` re-converges the carriers. If a rollback write
+    itself fails, the original error re-raises with the rollback failure
+    chained in ``__cause__``. A no-op bump (VERSION already equal) raises:
+    idempotent re-sync belongs to ``sync_release_metadata``. Returns the
+    files changed by this call (always includes "VERSION").
     """
     target = Path(repo_dir).resolve()
     version_file = target / "VERSION"
@@ -528,8 +535,11 @@ def bump_release_version(new_version: str, repo_dir: str) -> List[str]:
                 "carrier sync left desyncs after bump to "
                 f"{new_version}: {', '.join(desyncs)}"
             )
-    except Exception:
-        _rollback()
+    except Exception as exc:
+        try:
+            _rollback()
+        except Exception as rollback_exc:
+            raise exc from rollback_exc
         raise
 
     return ["VERSION"] + changed

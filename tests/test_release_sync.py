@@ -831,3 +831,25 @@ class TestBumpReleaseVersion:
     def test_missing_version_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             bump_release_version("5.0.0", str(tmp_path))
+
+
+    def test_rollback_failure_raises_original_with_cause(self, tmp_path, monkeypatch):
+        """A rollback write failure surfaces the ORIGINAL error with __cause__."""
+        import pathlib as _pathlib
+
+        repo = _make_repo(tmp_path, "4.99.1")
+        (repo / "web" / "modules" / "api_types.js").write_text(
+            "const GATEWAY_CONTRACT_VERSION = 'broken-no-quote", encoding="utf-8"
+        )
+        real_write_bytes = _pathlib.Path.write_bytes
+
+        def failing_write_bytes(self, data):
+            if self.name == "VERSION":
+                raise OSError("rollback write failed")
+            return real_write_bytes(self, data)
+
+        monkeypatch.setattr(_pathlib.Path, "write_bytes", failing_write_bytes)
+        with pytest.raises(RuntimeError, match="desyncs") as exc_info:
+            bump_release_version("5.0.0", str(repo))
+        assert isinstance(exc_info.value.__cause__, OSError)
+        assert "rollback write failed" in str(exc_info.value.__cause__)
