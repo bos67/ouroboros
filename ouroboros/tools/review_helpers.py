@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from ouroboros.tools.release_sync import check_worktree_version_sync  # noqa: F401 - moved to its version-sync home; compatibility re-export
 from ouroboros.utils import (
+    sanitize_tool_result_for_log,  # noqa: F401 - compatibility re-export (canonical home ouroboros.utils, restored 6.118.4)
     truncate_review_artifact as _truncate_review_artifact,
     utc_now_iso,
 )
@@ -344,6 +345,8 @@ from ouroboros.tools.review_pack_files import (  # noqa: E402
     iter_repo_pack_entries,
     list_git_tracked_paths,
     redact_prompt_secrets,
+    _JSON_SECRET_RE,  # noqa: F401 - compatibility re-export; canonical home review_pack_files (restored 6.118.4)
+    _SECRET_LINE_RE,  # noqa: F401 - compatibility re-export; canonical home review_pack_files (restored 6.118.4)
 )
 # Advisory compact inline policy (6.118.0) lives in the advisory_pack_policy
 # leaf module; re-imported here for backward compatibility with existing

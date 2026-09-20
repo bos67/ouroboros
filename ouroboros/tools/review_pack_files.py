@@ -24,9 +24,9 @@ Owned here:
   and the advisory ``inline_policy`` shims.
 
 No imports from other ``ouroboros.tools`` modules at import time except the
-version-sync re-export home and the lazy in-function seams that already
-existed (advisory_pack_policy, review_binary_context) — both bodies import
-back lazily by the same contract, never at module import time.
+lazy in-function seams that already existed (advisory_pack_policy,
+review_binary_context) — both bodies import back lazily by the same
+contract, never at module import time.
 """
 from __future__ import annotations
 

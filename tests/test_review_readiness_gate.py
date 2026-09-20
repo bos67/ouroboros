@@ -373,3 +373,24 @@ class TestSharedGitReviewHelpers:
             {"item": "intent_alignment"},
             {"item": "scope_review_skipped"},
         ]
+
+    def test_review_helpers_secret_redaction_names_are_re_exported(self):
+        """6.118.3 leaf extraction silently dropped three review_helpers names.
+
+        The re-export plane must restore every historical
+        ``from review_helpers import <name>`` surface; the private regexes
+        keep their canonical home (review_pack_files) and identity.
+        """
+
+        from ouroboros.tools import review_helpers as rh
+        from ouroboros.tools import review_pack_files
+
+        assert callable(rh.sanitize_tool_result_for_log)
+        for name in ("_SECRET_LINE_RE", "_JSON_SECRET_RE"):
+            assert hasattr(rh, name)
+            assert getattr(rh, name) is getattr(review_pack_files, name)
+
+    def test_review_helpers_version_sync_re_export_alive(self):
+        from ouroboros.tools import review_helpers as rh
+
+        assert callable(rh.check_worktree_version_sync)
