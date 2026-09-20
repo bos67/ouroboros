@@ -6,6 +6,7 @@ import pytest
 
 from ouroboros.tools.release_sync import (
     RELEASE_ASSET_TEMPLATES,
+    bump_release_version,
     check_history_limit,
     detect_numeric_claims,
     normalize_linux_package_version,
@@ -772,3 +773,61 @@ class TestBadgeAndArchRegexAcceptRc:
     def test_arch_header_regex_still_matches_stable(self):
         header = "# Ouroboros v4.50.0 — Three-layer refactor\n"
         assert _ARCH_HEADER_RE.search(header) is not None
+
+
+# ---------------------------------------------------------------------------
+# bump_release_version (atomic version transition)
+# ---------------------------------------------------------------------------
+
+class TestBumpReleaseVersion:
+    def test_bumps_version_and_all_carriers(self, tmp_path):
+        repo = _make_repo(tmp_path, "4.99.1")
+        changed = bump_release_version("5.0.0", str(repo))
+        assert "VERSION" in changed
+        assert (repo / "VERSION").read_text().strip() == "5.0.0"
+        pyproject_text = (repo / "pyproject.toml").read_text()
+        assert 'version = "5.0.0"' in pyproject_text
+        web_package_text = (repo / "web" / "package.json").read_text()
+        assert '"version": "5.0.0"' in web_package_text
+        arch_text = (repo / "docs" / "ARCHITECTURE.md").read_text()
+        assert "# Ouroboros v5.0.0" in arch_text
+
+    def test_failed_bump_rolls_back_every_byte(self, tmp_path):
+        repo = _make_repo(tmp_path, "4.99.1")
+        # Corrupt a carrier so post-bump desync assertion fires.
+        (repo / "web" / "modules" / "api_types.js").write_text(
+            "const GATEWAY_CONTRACT_VERSION = 'broken-no-quote", encoding="utf-8"
+        )
+        before = {
+            p: (repo / p).read_bytes() if (repo / p).exists() else None
+            for p in (
+                "VERSION", "pyproject.toml", "uv.lock",
+                "web/package.json", "README.md",
+                "docs/ARCHITECTURE.md",
+            )
+        }
+        with pytest.raises(RuntimeError, match="desyncs"):
+            bump_release_version("5.0.0", str(repo))
+        for p, original in before.items():
+            path = repo / p
+            if original is None:
+                assert not path.exists(), p
+            else:
+                assert path.read_bytes() == original, p
+
+    def test_noop_bump_raises(self, tmp_path):
+        repo = _make_repo(tmp_path, "4.99.1")
+        sync_release_metadata(str(repo))
+        with pytest.raises(ValueError, match="already 4.99.1"):
+            bump_release_version("4.99.1", str(repo))
+
+    def test_rejects_invalid_version_before_touching_disk(self, tmp_path):
+        repo = _make_repo(tmp_path, "4.99.1")
+        before = (repo / "VERSION").read_bytes()
+        with pytest.raises(ValueError, match="unsupported release version"):
+            bump_release_version("6.118.6-next", str(repo))
+        assert (repo / "VERSION").read_bytes() == before
+
+    def test_missing_version_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError):
+            bump_release_version("5.0.0", str(tmp_path))

@@ -447,6 +447,94 @@ def sync_release_metadata(repo_dir: str) -> List[str]:
     return changed
 
 
+# Files sync_release_metadata may rewrite, snapshotted before a bump so a
+# failed bump restores every byte. Keep in lockstep with the writers above.
+_BUMP_SNAPSHOT_PATHS = (
+    "VERSION",
+    "pyproject.toml",
+    "uv.lock",
+    "web/package.json",
+    "web/modules/api_types.js",
+    "README.md",
+    "site/install/index.html",
+    "docs/install/index.html",
+    "docs/ARCHITECTURE.md",
+)
+
+
+def bump_release_version(new_version: str, repo_dir: str) -> List[str]:
+    """Set VERSION to *new_version* and sync every release carrier atomically.
+
+    The single legal path for changing the release version: write VERSION,
+    run ``sync_release_metadata``, then assert zero carrier desyncs. A failed
+    bump rolls every snapshotted file back to its pre-call bytes — a
+    half-synced tree is structurally impossible — and raises naming the
+    failure. A no-op bump (VERSION already equal) raises: idempotent re-sync
+    belongs to ``sync_release_metadata``, a bump is a state transition.
+    Returns the files changed by this call (always includes "VERSION").
+    """
+    target = Path(repo_dir).resolve()
+    version_file = target / "VERSION"
+    if not version_file.exists():
+        raise FileNotFoundError(f"VERSION not found under {target}")
+
+    new_version = str(new_version or "").strip()
+    if not is_release_version(new_version):
+        raise ValueError(f"unsupported release version: {new_version!r}")
+
+    old_version_text = version_file.read_text(encoding="utf-8")
+    if old_version_text.strip() == new_version:
+        raise ValueError(
+            f"VERSION is already {new_version}; bump requires a version change "
+            "(idempotent re-sync belongs to sync_release_metadata)"
+        )
+
+    snapshot: dict = {}
+    for rel in _BUMP_SNAPSHOT_PATHS:
+        path = target / rel
+        snapshot[rel] = path.read_bytes() if path.exists() else None
+
+    def _rollback() -> None:
+        for rel, original in snapshot.items():
+            path = target / rel
+            if original is None:
+                path.unlink(missing_ok=True)
+            else:
+                path.write_bytes(original)
+
+    newline_suffix = "\n" if old_version_text.endswith("\n") else ""
+    try:
+        version_file.write_text(new_version + newline_suffix, encoding="utf-8")
+        changed = list(sync_release_metadata(str(target)) or [])
+
+        def _read(rel_path: str) -> str:
+            path = target / rel_path
+            return path.read_text(encoding="utf-8") if path.exists() else ""
+
+        desyncs = version_carrier_desyncs(
+            new_version,
+            pyproject_text=_read("pyproject.toml"),
+            uv_lock_text=_read("uv.lock"),
+            web_package_text=_read("web/package.json"),
+            readme_text=_read("README.md"),
+            arch_text=_read("docs/ARCHITECTURE.md"),
+            api_types_text=_read("web/modules/api_types.js"),
+            download_readme_text=_read("README.md"),
+            site_install_text=_read("site/install/index.html"),
+            docs_install_text=_read("docs/install/index.html"),
+        )
+        if desyncs:
+            raise RuntimeError(
+                "carrier sync left desyncs after bump to "
+                f"{new_version}: {', '.join(desyncs)}"
+            )
+    except Exception:
+        _rollback()
+        raise
+
+    return ["VERSION"] + changed
+
+
 def check_history_limit(readme_text: str) -> List[str]:
     """Return advisory warnings when Version History exceeds P9 row limits."""
     warnings: List[str] = []
