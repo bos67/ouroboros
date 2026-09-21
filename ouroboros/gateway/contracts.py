@@ -125,6 +125,11 @@ class ChatOutbound(TypedDict):
     # the job that already owns the routing ({job_id, kind, target, status,
     # chat_id}); the first initiator's chat keeps the progress stream.
     lifecycle_pointer: NotRequired[Dict[str, Any]]
+    # Final-answer integrity stamp (v6.119.5): measured repetition-loop facts
+    # ({degenerate, trigram_uniqueness, top_trigram_repeats}) on frames that
+    # carry a final answer stamped at the terminal delivery seam. Open bag of
+    # typed facts; absent = not stamped (clean or detector-not-applicable).
+    final_text_integrity: NotRequired[Dict[str, Any]]
     subagent_event: NotRequired[str]
     subagent_task_id: NotRequired[str]
     root_task_id: NotRequired[str]

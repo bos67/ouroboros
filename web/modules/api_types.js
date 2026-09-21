@@ -237,6 +237,11 @@
  *   X3: a repair receipt whose managed task id does not exist yet (minted at
  *   promotion) — typed truth instead of an invented id.
  * @property {Object=} lifecycle
+ * @property {Object=} final_text_integrity
+ *   Final-answer integrity stamp (v6.119.5): measured repetition-loop facts
+ *   ({degenerate, trigram_uniqueness, top_trigram_repeats}) on frames that
+ *   carry a final answer stamped at the terminal delivery seam. Open bag of
+ *   typed facts; absent = not stamped (clean or detector-not-applicable).
  * @property {Object=} lifecycle_pointer
  *   C4 multi-chat dedupe: a duplicate lifecycle initiator's typed pointer to the
  *   job that already owns the routing ({job_id, kind, target, status, chat_id}).
@@ -1205,4 +1210,4 @@ export const MAX_QUIZ_OPTIONS = 6;
 // REFUSES a longer comment (it is delivered verbatim, never truncated), so
 // the card must not offer to send one.
 export const MAX_DECISION_COMMENT = 2000;
-export const GATEWAY_CONTRACT_VERSION = '6.119.4';
+export const GATEWAY_CONTRACT_VERSION = '6.119.5';

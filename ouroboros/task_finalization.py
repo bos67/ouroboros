@@ -27,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import pathlib
+import re
 from typing import Any, Dict, List
 
 from ouroboros.utils import truncate_review_artifact
@@ -36,6 +37,70 @@ log = logging.getLogger(__name__)
 # Prompt bounds: the overflow count is disclosed instead of silently dropped.
 _SEALED_MANIFEST_MAX_FILES = 200
 _SEALED_FINAL_TEXT_PROMPT_CHARS = 4000
+
+# Final-answer integrity detector (v6.119.4 check on real incidents: tasks
+# 74c83c57 & e38b486c vs clean finals 1ae96feb/451177be). The seam STAMPS, never
+# rewrites: degenerate repetition-loop model output still delivers byte-exact
+# (delivery never mutates an answer), but the fact becomes machine-readable on
+# the final frames and the durable result. Calibration: a manifest-loop final
+# measured trigram uniqueness 0.569 with a top trigram repeating 26-27x, while
+# clean finals measured 0.986-0.997 with top-trigram repeats <=4. Thresholds sit
+# in the middle of that gap — verified, not guessed. Skipped for short finals
+# (<_FINAL_INTEGRITY_MIN_WORDS): small texts legitimately repeat names.
+_FINAL_INTEGRITY_MIN_WORDS = 60
+_FINAL_INTEGRITY_MAX_TRIGRAM_UNIQUENESS = 0.92
+_FINAL_INTEGRITY_MAX_TOP_NGRAM_REPEATS = 12
+
+
+def final_text_integrity_facts(
+    text: str,
+    *,
+    trigram_uniqueness_threshold: float = _FINAL_INTEGRITY_MAX_TRIGRAM_UNIQUENESS,
+    top_ngram_repeats_threshold: int = _FINAL_INTEGRITY_MAX_TOP_NGRAM_REPEATS,
+) -> Dict[str, Any]:
+    """Typed facts probe for a potentially degenerate repetition-loop final.
+
+    Returns ``{}`` for an empty/short final (detector not applicable — that is
+    disclosure, not evasion). Deterministic, pure, additive: the text itself is
+    never modified. A degenerate final repeats shingles (trigrams) — either the
+    window-wide uniqueness collapses toward the repeated loop vocabulary, or a
+    single shingle repeats many times over. Both observed on the real manifest-
+    loop incident; neither occurs in calibration finals. Thresholds were
+    measured (see module constant comments), not tuned by feel.
+    """
+    words = re.sub(r"[^\w\u0400-\u04ff]+", " ", str(text or "").lower()).split()
+    if len(words) < _FINAL_INTEGRITY_MIN_WORDS:
+        return {}
+    span = 3
+    shingles = [
+        " ".join(words[i:i + span])
+        for i in range(len(words) - span + 1)
+    ]
+    total = len(shingles)
+    counts: Dict[str, int] = {}
+    for shingle in shingles:
+        counts[shingle] = counts.get(shingle, 0) + 1
+    uniqueness = round(len(counts) / total, 4) if total else 1.0
+    top_shingle = max(counts, key=lambda k: counts[k]) if counts else ""
+    top_repeats = int(counts.get(top_shingle, 0)) if counts else 0
+    degenerate = (
+        uniqueness < trigram_uniqueness_threshold
+        or top_repeats > top_ngram_repeats_threshold
+    )
+    facts: Dict[str, Any] = {
+        "trigram_uniqueness": uniqueness,
+        "top_trigram": top_shingle,
+        "top_trigram_repeats": top_repeats,
+        "degenerate": degenerate,
+    }
+    if degenerate:
+        facts["frame"] = (
+            "final_text_integrity: repetition-loop suspected on delivery "
+            f"(trigram_uniqueness={uniqueness}, top={top_repeats}x "
+            f"'{top_shingle}')"
+        )
+    return facts
+
 
 # Closed producer vocabulary. Missing remains a valid legacy state and must
 # never be inferred from result text or lifecycle status.
@@ -90,6 +155,20 @@ def prepare_terminal_send_event(
     *, ephemeral: bool, presence: bool,
 ) -> Dict[str, Any]:
     """Preserve raw host salvage, then build the one live/replay projection."""
+    # Final-answer integrity stamp — BEFORE the early returns so every
+    # delivery path (live shortcut, buffered drain, outbox replay) carries the
+    # typed facts. Attribution rule: the probe writes its facts onto the SAME
+    # usage dict that ``terminal_result_fields`` already reads, so the durable
+    # result carries the flag without a second derivation.
+    facts = final_text_integrity_facts(text)
+    if facts:
+        usage["final_text_integrity"] = facts
+        if facts.get("degenerate"):
+            send_event.setdefault("progress_meta", {})["final_text_integrity"] = {
+                "degenerate": True,
+                "trigram_uniqueness": facts.get("trigram_uniqueness"),
+                "top_trigram_repeats": facts.get("top_trigram_repeats"),
+            }
     origin = str(usage.get("terminal_origin") or "")
     if ephemeral and not presence:
         # #369: an ephemeral decision's task_done frame is dropped at the
@@ -131,6 +210,9 @@ def terminal_result_fields(usage: Dict[str, Any]) -> Dict[str, Any]:
     path = str(usage.get("terminal_salvage_path") or "")
     if path:
         fields["terminal_salvage_path"] = path
+    integrity = usage.get("final_text_integrity")
+    if isinstance(integrity, dict) and integrity.get("degenerate"):
+        fields["final_text_integrity"] = integrity
     if usage.get("terminal_plan_review_open") is True:
         fields["terminal_plan_review_open"] = True
     return fields

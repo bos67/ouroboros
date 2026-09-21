@@ -108,6 +108,11 @@ _PROGRESS_META_FIELDS = (
     # A duplicate lifecycle call is a typed pointer/ack, not a task. Preserve
     # the pointer on reload while its outer task_id stays empty.
     "lifecycle_pointer",
+    # Final-answer integrity stamp (v6.119.5): degenerate repetition-loop
+    # finals keep their typed fact across reload. Open additive bag member —
+    # no client renderer yet (the ChatOutbound.final_text_integrity ABI
+    # mirror ships in this same release; §11.3 mirror in web/modules/api_types.js).
+    "final_text_integrity",
 )
 
 _SKILL_REVIEW_STRING_FIELDS = (
