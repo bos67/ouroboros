@@ -1,4 +1,4 @@
-"""Final-text integrity gate at the terminal delivery seam (v6.119.5).
+"""Final-text integrity gate at the terminal delivery seam (v6.119.7).
 
 The seam stamps typed facts beside degenerate repetition-loop finals instead of
 rewriting or blocking them (delivery never mutates an answer). Calibration was
@@ -12,22 +12,10 @@ measurements, not with live data-drive reads (tests must stay hermetic).
 import pytest
 
 from ouroboros.task_finalization import (
-    _prior_stamp_frames,
     final_text_integrity_facts,
     prepare_terminal_send_event,
     terminal_result_fields,
 )
-
-
-def _real_stamp_frame() -> str:
-    """The frame sentence exactly AS THE PRODUCER mints it (not a hand copy).
-
-    These tests exercise the seam's inherited-frame recognizer using the
-    stamp's CURRENT output shape (test_frame_recognizer_is_exact_shape_guard
-    pins it); recognize(produce(x)) == x can only fail when the producer
-    changed its format without re-deriving `_PROGRESS_META_FRAME_RE`.
-    """
-    return str(final_text_integrity_facts(_loop_corpus())["frame"])
 
 
 def _loop_corpus(repeats: int = 30) -> str:
@@ -226,16 +214,12 @@ class TestSeamStamp:
 class TestPriorStampCleanup:
     """Used-dict hygiene: a prior finalize's integrity facts must not ride
     into a later clean/short final of the same task (triad critical
-    2026-09-21). The seam is the sole integrity writer, so the clear path
-    also strips only the frame sentence the prior stamp itself wrote — text
-    surgery is bounded to the writer's shape, never to the whole answer.
+    2026-09-21). The seam is the sole integrity writer of BOTH surfaces —
+    the usage fact and the progress_meta stamp — so the clear path wipes
+    both; text is never touched (the stamp never mutates the answer).
     """
 
-    def test_short_final_over_prior_degenerate_stamp_clears_usage(self, tmp_path):
-        prior_frame = (
-            "final_text_integrity: repetition-loop suspected on delivery "
-            "(trigram_uniqueness=0.5686, top=27x 'the manifest carries')"
-        )
+    def test_short_final_over_prior_degenerate_stamp_clears_both_surfaces(self, tmp_path):
         usage: dict = {"terminal_origin": "model_final"}
         usage["final_text_integrity"] = {
             "degenerate": True,
@@ -243,13 +227,18 @@ class TestPriorStampCleanup:
             "top_trigram": "the manifest carries",
             "top_trigram_repeats": 27,
         }
-        event = {"type": "send_message", "task_id": "tc", "chat_id": 1, "text": prior_frame}
+        event = {
+            "type": "send_message", "task_id": "tc", "chat_id": 1,
+            "text": "Short final.",
+            "progress_meta": {"final_text_integrity": {"degenerate": True}},
+        }
         prepare_terminal_send_event(
-            tmp_path, {"id": "tc"}, prior_frame,  # 7-word final → probe not applicable
+            tmp_path, {"id": "tc"}, "Short final.",  # < 60 words → probe not applicable
             usage, event, ephemeral=False, presence=False,
         )
         assert "final_text_integrity" not in usage
-        assert "final_text_integrity" not in (event.get("progress_meta") or {})
+        assert "final_text_integrity" not in event["progress_meta"]
+        assert event["text"] == "Short final."  # delivered text byte-exact
 
     def test_empty_final_over_prior_degenerate_stamp_clears_usage(self, tmp_path):
         usage: dict = {
@@ -286,35 +275,38 @@ class TestPriorStampCleanup:
         facts = usage["final_text_integrity"]
         assert facts["degenerate"] is False
         assert facts["trigram_uniqueness"] == final_text_integrity_facts(clean)["trigram_uniqueness"]
-        # Degenerate→clean has no NEW frame stamp; write-wins covers the
-        # degenerate→degenerate overwrite in TestSeamStamp.
-        assert event["progress_meta"]["final_text_integrity"] == {
-            "degenerate": True, "top_trigram_repeats": 27,
+        # The stale degenerate frame stamp is cleared with the fact: the
+        # seam owns both surfaces; a clean final shows no integrity stamp.
+        assert "final_text_integrity" not in event["progress_meta"]
+
+    def test_delivered_text_is_never_touched(self, tmp_path):
+        corpus = _loop_corpus()
+        usage: dict = {
+            "terminal_origin": "model_final",
+            "final_text_integrity": {"degenerate": True},
         }
+        event = {"type": "send_message", "task_id": "tt", "chat_id": 1, "text": corpus}
+        prepare_terminal_send_event(
+            tmp_path, {"id": "tt"}, corpus, usage, event,
+            ephemeral=False, presence=False,
+        )
+        assert event["text"] == corpus  # delivery never mutates an answer
 
-    def test_frame_recognizer_is_exact_shape_guard(self):
-        # Producer-minted: recognize(stamp()) pins the CURRENT frame format —
-        # any producer rewording that forgets the derived regex fails here.
-        prior_frame = _real_stamp_frame()
-        assert _prior_stamp_frames(f"head {prior_frame} tail") == (prior_frame,)
-        assert _prior_stamp_frames("no frames here") == ()
-        assert _prior_stamp_frames(None) == ()
-
-    def test_inherited_frame_does_not_reach_the_salvage_copy(self, tmp_path):
-        prior_frame = _real_stamp_frame()
-        text = "kept provenance head. " + prior_frame + " kept tail sentence intact."
-        assert _prior_stamp_frames(text) == (prior_frame,)
+    def test_salvage_path_restates_clean_facts_and_keeps_text_intact(self, tmp_path):
+        # >60-word all-unique text → clean facts re-derived, honest False
+        # stamp; the preserved salvage copy keeps the answer byte-exact.
+        clean_text = " ".join(f"w{i}" for i in range(80))
         usage: dict = {
             "terminal_origin": "host_salvage",
             "final_text_integrity": {"degenerate": True, "top_trigram_repeats": 27},
         }
-        event = {"type": "send_message", "task_id": "ts", "chat_id": 1}
+        event = {"type": "send_message", "task_id": "ts", "chat_id": 1, "text": clean_text}
         prepare_terminal_send_event(
-            tmp_path, {"id": "ts"}, text, usage, event,
+            tmp_path, {"id": "ts"}, clean_text, usage, event,
             ephemeral=False, presence=False,
         )
-        assert "final_text_integrity" not in usage  # stale facts cleared
+        assert (usage.get("final_text_integrity") or {}).get("degenerate") is False
         copies = [p for p in tmp_path.rglob("*") if p.is_file()]
         assert copies, "salvage copy should exist"
-        hits = [p for p in copies if prior_frame in p.read_text(encoding="utf-8")]
-        assert not hits, [str(p) for p in hits]
+        assert any(clean_text in p.read_text(encoding="utf-8") for p in copies)
+        assert event["text"] == clean_text  # delivered byte-exact

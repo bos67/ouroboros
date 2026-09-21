@@ -51,15 +51,6 @@ _FINAL_INTEGRITY_MIN_WORDS = 60
 _FINAL_INTEGRITY_MAX_TRIGRAM_UNIQUENESS = 0.92
 _FINAL_INTEGRITY_MAX_TOP_NGRAM_REPEATS = 12
 
-# Prior-stamp frame sentence, captured exactly as this module writes it —
-# every later finalize of the same task must be able to recognize an
-# inherited integrity frame in the text it fails to re-stamp (sole-writer
-# saga lives in ``prepare_terminal_send_event``).
-_PROGRESS_META_FRAME_RE = re.compile(
-    r"final_text_integrity: repetition-loop suspected on delivery "
-    r"[(][^(]*[)]"
-)
-
 
 def final_text_integrity_facts(
     text: str,
@@ -111,18 +102,6 @@ def final_text_integrity_facts(
     return facts
 
 
-def _prior_stamp_frames(text: str) -> tuple[str, ...]:
-    """Frame sentences from a PRIOR finalize arriving inside this text.
-
-    The integrity stamp is written onto a REUSED usage dict, and its frame
-    sentence persists inside the answer text of a later finalize of the
-    same task. The seam is the sole writer of that fact, so before it
-    clears stale evidence it must know whether the prior stamp left a
-    metadata frame to clear with it. Exact-shape only: the regex is derived
-    from the frame string this module stamps; any future escape of the
-    shingle must be re-derived there, not here.
-    """
-    return tuple(_PROGRESS_META_FRAME_RE.findall(str(text or "")))
 
 
 # Closed producer vocabulary. Missing remains a valid legacy state and must
@@ -179,11 +158,15 @@ def prepare_terminal_send_event(
 ) -> Dict[str, Any]:
     """Preserve raw host salvage, then build the one live/replay projection.
 
-    Sole writer of the terminal integrity fact on the usage dict it
-    receives, INCLUDING the stale carry-over from a prior finalize of the
-    same task: when this finalize cannot re-derive (empty or short final),
-    inherited facts are cleared before the early returns so a reused dict
-    cannot pin the wrong answer's verdict onto the durable result.
+    Sole writer of the terminal integrity fact AND its progress_meta
+    stamp. When this finalize cannot re-derive facts (empty or short
+    final), BOTH owned surfaces inherited from a prior finalize of the
+    same task are cleared before the early returns — a reused usage dict
+    cannot pin the wrong answer's verdict onto the durable result, and a
+    reused event cannot deliver a stale degenerate frame. Text is never
+    touched: the stamp never mutates the answer (6.119.5 contract; the
+    6.119.6 frame-strip was dead code on a false premise, removed in
+    6.119.7 per the paid scope reviewer's finding).
     """
     # Final-answer integrity stamp — BEFORE the early returns so every
     # delivery path (live shortcut, buffered drain, outbox replay) carries the
@@ -191,7 +174,6 @@ def prepare_terminal_send_event(
     # usage dict that ``terminal_result_fields`` already reads, so the durable
     # result carries the flag without a second derivation.
     prior_integrity_present = bool(usage.get("final_text_integrity"))
-    inherited_frames = _prior_stamp_frames(text) if prior_integrity_present else ()
     facts = final_text_integrity_facts(text)
     if facts:
         usage["final_text_integrity"] = facts
@@ -201,18 +183,27 @@ def prepare_terminal_send_event(
                 "trigram_uniqueness": facts.get("trigram_uniqueness"),
                 "top_trigram_repeats": facts.get("top_trigram_repeats"),
             }
+        else:
+            # Clean re-finalize over a prior degenerate stamp (finding 2b):
+            # non-degenerate of the new verdict must be visible — the seam
+            # owns the stamp, so a mid-stage clean answer cannot keep
+            # wearing the previous answer's degenerate frame.
+            progress_meta = send_event.get("progress_meta")
+            if isinstance(progress_meta, dict):
+                progress_meta.pop("final_text_integrity", None)
     elif prior_integrity_present:
-        # Clear path (triad critical 2026-09-21, started clearing at the seam
-        # so a reused usage dict cannot pin another answer's evidence into a
-        # later clean/short final): the seam is the sole integrity writer, so
-        # when it cannot re-derive, IT clears the inherited facts. A prior
-        # stamp's frame sentence may also have ridden inside the surviving
-        # text (the stamp rewrites text today, so the shape is that of the
-        # stamped copy); the sole-writer strip removes the copy the prior
-        # finalize itself wrote — and only that copy.
+        # Clear path (triad critical 2026-09-21): the seam is the sole
+        # integrity writer, so when it cannot re-derive (empty/short final),
+        # IT clears the inherited facts — on BOTH owned surfaces: the usage
+        # fact and the progress_meta stamp the seam itself wrote on a prior
+        # degenerate finalize of the same event. Text is never touched: the
+        # stamp never mutates the answer (6.119.5 contract) — the 6.119.6
+        # frame-strip on text was dead code built on a false premise, removed
+        # in this release by the paid scope reviewer's finding.
         usage.pop("final_text_integrity", None)
-        for frame in inherited_frames:
-            text = text.replace(frame, "", 1)
+        progress_meta = send_event.get("progress_meta")
+        if isinstance(progress_meta, dict):
+            progress_meta.pop("final_text_integrity", None)
     origin = str(usage.get("terminal_origin") or "")
     if ephemeral and not presence:
         # #369: an ephemeral decision's task_done frame is dropped at the
