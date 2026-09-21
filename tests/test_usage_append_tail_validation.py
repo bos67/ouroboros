@@ -4,7 +4,9 @@ Pins the 2026-09-21 change in ``ouroboros/usage_ledger.py::_append_rows_locked``
 the appended TAIL is validated against the caller's already-validated history
 (dense sequence across the read boundary + transition legality against the full
 per-attempt state map) instead of re-validating the whole history on every
-append (~99ms under the monetary lock at 17K rows, measured). The guarantee
+append (~107ms under the monetary lock at 17K rows in the release A/B; the
+first same-day probe measured 99.2ms — same operation, ~8% run spread).
+The guarantee
 strength must stay identical to a full validation: same accepts, same rejects,
 same exception type.
 """

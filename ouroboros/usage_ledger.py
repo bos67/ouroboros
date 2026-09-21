@@ -491,7 +491,9 @@ def _append_rows_locked(
     # hot path: every caller receives them from a validated read (a full
     # replay, or the warm cache whose merges themselves passed tail
     # validation), and re-validating 17K rows cost ~99ms under the monetary
-    # lock on EVERY append (measured 2026-09-21). The resume seam validates
+    # lock on EVERY append (measured 2026-09-21: 106.9ms in the release A/B
+    # at 17,320 rows; 99.2ms in the first same-day probe at 17,242 rows —
+    # same operation, run-to-run spread ~8%). The resume seam validates
     # the same contract for the tail: dense sequence across the read boundary
     # and transition legality against the full per-attempt state map derived
     # from that history — the exact states a fresh full validation would see.
