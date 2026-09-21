@@ -587,6 +587,12 @@ def _extract_result_metadata(fn_name: str, result: Any, is_error: bool) -> Dict[
         status = "data_blocked"
     elif text.startswith("⚠️ WRITE_FILE_"):
         status = "write_file_blocked"
+    elif text.startswith("⚠️ TOOL_ARG_ERROR"):
+        # Typed arg-error family (6.119.8): parse-failure early-return and
+        # registry param rejections share this first line; a distinct status
+        # keeps the consecutive-arg-error counter honest (generic `error`
+        # used to swallow it).
+        status = "arg_error"
     elif text.startswith("⚠️ EDIT_TEXT_"):
         status = "edit_text_blocked"
     elif text.startswith("⚠️ APPLY_PATCH_") or text.startswith("⚠️ EDIT_BATCH_"):
@@ -710,50 +716,72 @@ def _execute_single_tool(
     is_code_tool = fn_name in tools.CODE_TOOLS
     correlation = _tool_correlation(tools)
 
+    wire_repair = ""
     try:
         args = json.loads(tc["function"]["arguments"] or "{}")
-    except (json.JSONDecodeError, ValueError) as e:
-        result = f"⚠️ TOOL_ARG_ERROR: Could not parse arguments for '{requested_fn_name}': {e}"
-        trace_ref = {}
-        try:
-            trace_ref = persist_call(
-                pathlib.Path(drive_logs).parent,
-                task_id=task_id,
-                call_id=new_call_id("tool_arg_error"),
-                call_type="tool_call",
-                payload={
-                    "tool": fn_name,
-                    "tool_call_id": tool_call_id,
-                    "parent_call_id": correlation.get("llm_call_id"),
-                    "execution_id": correlation.get("execution_id"),
-                    "round_id": correlation.get("round_id"),
-                    "raw_arguments": tc.get("function", {}).get("arguments"),
-                    "result": result,
-                },
-                manifest={
-                    "execution_id": correlation.get("execution_id"),
-                    "round_id": correlation.get("round_id"),
-                    "parent_call_id": correlation.get("llm_call_id"),
-                    "tool_call_id": tool_call_id,
-                    "tool": fn_name,
-                    "status": "arg_error",
-                },
-            )
-        except Exception:
-            log.debug("Failed to persist tool arg-error observability payload", exc_info=True)
-        return {
-            "tool_call_id": tool_call_id,
-            "fn_name": fn_name,
-            "result": result,
-            "is_error": True,
-            "tool_args": {},
-            "args_for_log": {},
-            "is_code_tool": is_code_tool,
-            "trace_ref": trace_ref,
-            "result_meta": _extract_result_metadata(fn_name, result, True),
-        }
+    except (json.JSONDecodeError, ValueError) as parse_error:
+        from ouroboros.tools.arg_recovery import recover_tool_arguments
 
-    args_for_log = sanitize_tool_args_for_log(fn_name, args if isinstance(args, dict) else {})
+        try:
+            args, wire_repair = recover_tool_arguments(tc["function"]["arguments"])
+        except ValueError:
+            args = None
+        if not isinstance(args, dict):
+            args = None
+            accepted_params = _accepted_params_note(tools, fn_name)
+            result = (
+                f"⚠️ TOOL_ARG_ERROR: Could not parse arguments for "
+                f"'{requested_fn_name}': {parse_error}"
+                " [repair refused: no single clean candidate survived; "
+                "re-derive the arguments from the error text]"
+                + accepted_params
+            )
+            trace_ref = {}
+            try:
+                trace_ref = persist_call(
+                    pathlib.Path(drive_logs).parent,
+                    task_id=task_id,
+                    call_id=new_call_id("tool_arg_error"),
+                    call_type="tool_call",
+                    payload={
+                        "tool": fn_name,
+                        "tool_call_id": tool_call_id,
+                        "parent_call_id": correlation.get("llm_call_id"),
+                        "execution_id": correlation.get("execution_id"),
+                        "round_id": correlation.get("round_id"),
+                        "raw_arguments": tc.get("function", {}).get("arguments"),
+                        "result": result,
+                    },
+                    manifest={
+                        "execution_id": correlation.get("execution_id"),
+                        "round_id": correlation.get("round_id"),
+                        "parent_call_id": correlation.get("llm_call_id"),
+                        "tool_call_id": tool_call_id,
+                        "tool": fn_name,
+                        "status": "arg_error",
+                    },
+                )
+            except Exception:
+                log.debug("Failed to persist tool arg-error observability payload", exc_info=True)
+            return {
+                "tool_call_id": tool_call_id,
+                "fn_name": fn_name,
+                "result": result,
+                "is_error": True,
+                "tool_args": {},
+                "args_for_log": {},
+                "is_code_tool": is_code_tool,
+                "trace_ref": trace_ref,
+                "result_meta": _extract_result_metadata(fn_name, result, True),
+            }
+        # One single clean candidate survived: CONTINUE below with the
+        # repaired wire. The args still pass full registry validation and
+        # the safety layer before anything executes — the repair only
+        # reshaped the wire format, never the authorization.
+
+    args_for_log = sanitize_tool_args_for_log(
+        fn_name, args if isinstance(args, dict) else {}
+    )
 
     typed_process_meta = fn_name in _PROCESS_META_TOOLS
     if typed_process_meta:
@@ -780,6 +808,12 @@ def _execute_single_tool(
 
     is_error = _is_tool_execution_failure(tool_ok, result)
     result_meta = _extract_result_metadata(fn_name, result, is_error)
+    if wire_repair:
+        # Typed recovery fact: the wire was repaired, the args still passed
+        # full registry validation + safety. Rides result_meta (never the
+        # tool's own result text), so charging the call as a FAILURE just
+        # because the wire was once broken would be a false red.
+        result_meta["arg_wire_repaired"] = wire_repair
     if typed_process_meta:
         # R5 (node-runtime sprint): merge the handler's TYPED process facts into
         # the call's result_meta. When a typed publication exists it owns the
@@ -849,6 +883,30 @@ def _execute_single_tool(
         "trace_ref": trace_ref,
         "result_meta": result_meta,
     }
+
+
+def _accepted_params_note(tools: ToolRegistry, fn_name: str) -> str:
+    """Accepted-params ladder line for the parse-refusal path (fail-soft).
+
+    Parse errors never reach registry validation, so unlike registry
+    rejections they carried no accepted-params fact; the model could not
+    recover from the error text alone (measured: the same hallucinated
+    kwargs class repeated across tasks). Sourced ONLY from the registry's
+    public SSOT accessor — one uncached read per refusal; unknown tool /
+    absent schema → no line, fail-soft, no exception.
+    """
+    try:
+        schema = tools.get_schema_by_name(fn_name)
+        if not isinstance(schema, dict):
+            return ""
+        function = schema.get("function") if isinstance(schema.get("function"), dict) else {}
+        params = (function.get("parameters") or {}).get("properties") or {}
+        if not isinstance(params, dict) or not params:
+            return ""
+        names = ", ".join(str(name) for name in params)
+        return f" (accepted parameters: {names})"
+    except Exception:
+        return ""
 
 
 class StatefulToolExecutor:
@@ -1342,6 +1400,75 @@ def _maybe_auto_attach_image(
         log.debug("auto-attach image failed", exc_info=True)
 
 
+_ARG_ERROR_STATUS = "arg_error"
+_ARG_STREAK_ALERT_AT = 3
+_ARG_STREAK_TOOL_NAMES_MAX = 5
+
+
+def _tool_arg_streak(tool_ctx: Any) -> Dict[str, Any]:
+    """Task-scoped consecutive arg-error streak on the tool ctx (lazy init).
+
+    Task-scoping is deliberate: a degradation arc is a property of ONE task
+    (measured: bc50794b burned ~15 consecutive rounds of degraded tool-args
+    mid-arc); a process-global counter would carry degradation across task
+    boundaries and inject alerts into unrelated tasks. Task boundaries
+    therefore reset it by construction.
+    """
+    streak = getattr(tool_ctx, "_arg_error_streak", None)
+    if not isinstance(streak, dict) or "count" not in streak or "tools" not in streak:
+        streak = {"count": 0, "tools": []}
+        try:
+            setattr(tool_ctx, "_arg_error_streak", streak)
+        except Exception:
+            streak = {"count": 0, "tools": []}
+    return streak
+
+
+def _update_tool_arg_streak(
+    tool_ctx: Any, streak: Dict[str, Any], fn_name: str, result_meta: Dict[str, Any],
+) -> None:
+    """Increment the streak ONLY on typed arg_error outcomes (pinned class).
+
+    Every other failure class (timeout, blocked, safety_violation,
+    tool_reported_failure, edit_ops_blocked, generic error...) is not an
+    argument-degradation signal: incrementing on it would make the alert
+    fire on infra noise instead of the measured class.
+    """
+    if str(result_meta.get("status") or "") != _ARG_ERROR_STATUS:
+        return
+    streak["count"] += 1
+    if fn_name and fn_name not in streak["tools"]:
+        streak["tools"].append(fn_name)
+    if len(streak["tools"]) > _ARG_STREAK_TOOL_NAMES_MAX:
+        del streak["tools"][:-_ARG_STREAK_TOOL_NAMES_MAX]
+
+
+def tool_arg_streak_alert_line(tool_ctx: Any) -> str:
+    """The alert block riding the periodic self-check when streak >= threshold.
+
+    Returns "" below the threshold so below-threshold checkpoint turns stay
+    byte-identical to today; bounded last-5 unique tool list (first-seen
+    order kept by the counter) and the re-derive-from-error-text command.
+    """
+    streak = _tool_arg_streak(tool_ctx)
+    count = streak.get("count") or 0
+    if count < _ARG_STREAK_ALERT_AT:
+        return ""
+    tools_text = ", ".join(str(name) for name in streak.get("tools") or [])
+    return (
+        f"\n\n⚠️ [TOOL-ARG DEGRADATION ALERT — {count} consecutive arg-error"
+        f"(s), tools: {tools_text}] Your last {count} tool calls failed on "
+        "argument JSON (parse or schema). STOP generating tool arguments "
+        "from memory. Re-derive the arguments from the accepted-parameters "
+        "shown in the recent error texts (they appear under 'accepted "
+        "parameters:'), or answer the owner directly in a plain sentence "
+        "and stop rather than risk repeating the same wrong call. A "
+        "degenerate repetition-loop final is already stamped "
+        "(final_text_integrity); this alert is the turn-level companion "
+        "of that seam.\n"
+    )
+
+
 def reclaim_trace_refs(tool_ctx: Any) -> Dict[str, Any]:
     """Per-task {tool_call_id: trace_ref} accumulated as tool results append."""
     refs = getattr(tool_ctx, "_tool_trace_refs", None)
@@ -1380,10 +1507,19 @@ def process_tool_results(
 ) -> int:
     """Append tool results to messages/trace and return error count."""
     error_count = 0
+    tool_ctx = getattr(tools, "_ctx", None) if tools is not None else None
+    arg_streak = _tool_arg_streak(tool_ctx)
 
     for exec_result in results:
         fn_name = exec_result["fn_name"]
         is_error = exec_result["is_error"]
+        if is_error:
+            _update_tool_arg_streak(tool_ctx, arg_streak, fn_name, exec_result.get("result_meta") or {})
+        elif arg_streak["count"]:
+            # Any non-arg-error outcome resets the streak: honest recovery
+            # credit — the counter measures only the arg-error degradation.
+            arg_streak["count"] = 0
+            arg_streak["tools"].clear()
 
         if is_error:
             error_count += 1

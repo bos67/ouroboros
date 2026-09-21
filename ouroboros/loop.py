@@ -2034,6 +2034,7 @@ def _maybe_inject_self_check(
     event_queue: Optional[queue.Queue] = None,
     task_id: str = "",
     drive_logs: Optional[pathlib.Path] = None,
+    tool_ctx: Any = None,
 ) -> bool:
     """Inject a normal user-turn self-check and emit one checkpoint event."""
     REMINDER_INTERVAL = 15
@@ -2044,10 +2045,13 @@ def _maybe_inject_self_check(
         return False
     accumulated_usage["_self_check_round"] = round_idx
 
+    from ouroboros.loop_tool_execution import tool_arg_streak_alert_line
+
+    arg_alert = tool_arg_streak_alert_line(tool_ctx) if tool_ctx is not None else ""
     ctx_tokens = sum(
         estimate_tokens(_extract_plain_text_from_content(m.get("content")))
         for m in messages
-    )
+    ) + estimate_tokens(arg_alert)
     raw_task_cost = accumulated_usage.get("cost")
     task_cost = float(raw_task_cost) if raw_task_cost is not None else None
     cost_text = f"${task_cost:.2f}" if task_cost is not None else "unknown"
@@ -2072,7 +2076,6 @@ def _maybe_inject_self_check(
         )
 
     tool_trace = _build_recent_tool_trace(messages)
-
     reminder = (
         f"[CHECKPOINT {checkpoint_num} — round {round_idx}/{max_rounds}]\n"
         f"Context: ~{ctx_tokens} tokens | Cost so far: {cost_text} | "
@@ -2081,6 +2084,8 @@ def _maybe_inject_self_check(
     )
     if tool_trace:
         reminder += f"\n{tool_trace}\n"
+    if arg_alert:
+        reminder += arg_alert
     reminder += (
         "\nThis is a periodic self-check, not a command to stop. "
         "Glance at your recent tool-call trace above and briefly consider:\n"
@@ -2283,6 +2288,7 @@ def _inject_round_checkpoints(
     checkpoint = _maybe_inject_self_check(
         round_idx, max_rounds, messages, accumulated_usage, emit_progress,
         event_queue=event_queue, task_id=task_id, drive_logs=drive_logs,
+        tool_ctx=getattr(tools, "_ctx", None),
     )
     time_budget = _maybe_inject_time_budget_milestone(
         messages, tools, event_queue=event_queue, task_id=task_id, drive_logs=drive_logs,
