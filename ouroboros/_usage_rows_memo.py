@@ -65,7 +65,7 @@ class _LedgerRowsMemo:
 # cross-process ledger lock; the module lock guards the dict itself. Write paths
 # (reserve/_transition/settle/import) never touch it — they read through their
 # own in-lock cache below (full ordered records, which seq assignment and
-# whole-history append validation need; this memo keeps only final rows), and
+# tail append validation need; this memo keeps only final rows), and
 # the stat + seq-continuity check on the next read is what makes a stale memo
 # impossible to serve, so correctness never depends on any writer remembering
 # to invalidate.
@@ -180,7 +180,7 @@ def _render_cached(
 # per-process warm cache of the last validated read per drive root: the next
 # in-lock read parses only the bytes appended since. It is distinct from
 # ``_ROWS_MEMO`` because writers need the FULL ordered records list (seq
-# assignment + whole-history append validation), not just final rows. Rows are
+# assignment + tail append validation), not just final rows. Rows are
 # shared read-only snapshots, same as the memo's.
 _LEDGER_READ_CACHE: "collections.OrderedDict[str, Tuple[LedgerResumeState, list]]" = (
     collections.OrderedDict()

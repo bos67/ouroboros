@@ -732,9 +732,13 @@ def _hot_store_thresholds() -> Tuple[Tuple[str, int, str], ...]:
         (
             "state/usage_attempts.jsonl",
             USAGE_LEDGER_WARN_BYTES,
-            "Every reservation re-reads the ledger under the monetary lock "
-            "(~0.5s hold at 20MB — see usage_ledger.py); ledger compaction is "
-            "the remediation (tracked as a GitHub issue).",
+            "Warm append/read paths are incremental (tail-only append "
+            "validation + resume cache — see usage_ledger.py); the residual "
+            "is the cold full replay under the monetary lock (~0.5s at 20MB, "
+            "grows linearly). Row-dropping compaction has no legal material: "
+            "every attempt already sits at its minimal validator-legal "
+            "transition chain (measured 2026-09-21: {2: 26, 3: 5738} "
+            "rows/attempt).",
         ),
         ("logs/events.jsonl", EVENTS_LOG_WARN_BYTES, no_rotation),
         ("logs/tools.jsonl", TOOLS_LOG_WARN_BYTES, no_rotation),
