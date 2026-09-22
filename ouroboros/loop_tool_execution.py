@@ -50,6 +50,8 @@ from ouroboros.utils import (
     truncate_review_artifact,
     utc_now_iso,
 )
+from ouroboros.tools.reclaim_bridge import prune_reclaim_trace_refs, reclaim_negative_memo, reclaim_trace_refs  # noqa: F401 - re-export plane (loop.py imports these here)
+from ouroboros.tools.tool_arg_streak import tool_arg_streak_alert_line, tool_arg_streak as _tool_arg_streak, update_tool_arg_streak as _update_tool_arg_streak  # noqa: F401
 
 log = logging.getLogger(__name__)
 
@@ -1398,104 +1400,6 @@ def _maybe_auto_attach_image(
             log.debug("auto-attach skipped for %s: %s", path, note)
     except Exception:  # noqa: BLE001 - attachment is an enhancement, never a failure
         log.debug("auto-attach image failed", exc_info=True)
-
-
-_ARG_ERROR_STATUS = "arg_error"
-_ARG_STREAK_ALERT_AT = 3
-_ARG_STREAK_TOOL_NAMES_MAX = 5
-
-
-def _tool_arg_streak(tool_ctx: Any) -> Dict[str, Any]:
-    """Task-scoped consecutive arg-error streak on the tool ctx (lazy init).
-
-    Task-scoping is deliberate: a degradation arc is a property of ONE task
-    (measured: bc50794b burned ~15 consecutive rounds of degraded tool-args
-    mid-arc); a process-global counter would carry degradation across task
-    boundaries and inject alerts into unrelated tasks. Task boundaries
-    therefore reset it by construction.
-    """
-    streak = getattr(tool_ctx, "_arg_error_streak", None)
-    if not isinstance(streak, dict) or "count" not in streak or "tools" not in streak:
-        streak = {"count": 0, "tools": []}
-        try:
-            setattr(tool_ctx, "_arg_error_streak", streak)
-        except Exception:
-            streak = {"count": 0, "tools": []}
-    return streak
-
-
-def _update_tool_arg_streak(
-    tool_ctx: Any, streak: Dict[str, Any], fn_name: str, result_meta: Dict[str, Any],
-) -> None:
-    """Increment the streak ONLY on typed arg_error outcomes (pinned class).
-
-    Every other failure class (timeout, blocked, safety_violation,
-    tool_reported_failure, edit_ops_blocked, generic error...) is not an
-    argument-degradation signal: incrementing on it would make the alert
-    fire on infra noise instead of the measured class.
-    """
-    if str(result_meta.get("status") or "") != _ARG_ERROR_STATUS:
-        return
-    streak["count"] += 1
-    if fn_name and fn_name not in streak["tools"]:
-        streak["tools"].append(fn_name)
-    if len(streak["tools"]) > _ARG_STREAK_TOOL_NAMES_MAX:
-        del streak["tools"][:-_ARG_STREAK_TOOL_NAMES_MAX]
-
-
-def tool_arg_streak_alert_line(tool_ctx: Any) -> str:
-    """The alert block riding the periodic self-check when streak >= threshold.
-
-    Returns "" below the threshold so below-threshold checkpoint turns stay
-    byte-identical to today; bounded last-5 unique tool list (first-seen
-    order kept by the counter) and the re-derive-from-error-text command.
-    """
-    streak = _tool_arg_streak(tool_ctx)
-    count = streak.get("count") or 0
-    if count < _ARG_STREAK_ALERT_AT:
-        return ""
-    tools_text = ", ".join(str(name) for name in streak.get("tools") or [])
-    return (
-        f"\n\n⚠️ [TOOL-ARG DEGRADATION ALERT — {count} consecutive arg-error"
-        f"(s), tools: {tools_text}] Your last {count} tool calls failed on "
-        "argument JSON (parse or schema). STOP generating tool arguments "
-        "from memory. Re-derive the arguments from the accepted-parameters "
-        "shown in the recent error texts (they appear under 'accepted "
-        "parameters:'), or answer the owner directly in a plain sentence "
-        "and stop rather than risk repeating the same wrong call. A "
-        "degenerate repetition-loop final is already stamped "
-        "(final_text_integrity); this alert is the turn-level companion "
-        "of that seam.\n"
-    )
-
-
-def reclaim_trace_refs(tool_ctx: Any) -> Dict[str, Any]:
-    """Per-task {tool_call_id: trace_ref} accumulated as tool results append."""
-    refs = getattr(tool_ctx, "_tool_trace_refs", None)
-    return refs if isinstance(refs, dict) else {}
-
-
-def reclaim_negative_memo(tool_ctx: Any) -> set:
-    """Per-task set of non-shrinking reclaim unit keys (created on demand)."""
-    memo = getattr(tool_ctx, "_context_reclaim_negative_memo", None)
-    if not isinstance(memo, set):
-        memo = set()
-        tool_ctx._context_reclaim_negative_memo = memo
-    return memo
-
-
-def prune_reclaim_trace_refs(tool_ctx: Any, messages: List[Dict[str, Any]]) -> None:
-    """Drop trace refs whose tool_call_id left the transcript (post-reclaim bound)."""
-    refs = getattr(tool_ctx, "_tool_trace_refs", None)
-    if not isinstance(refs, dict) or not refs:
-        return
-    live = {
-        str(msg.get("tool_call_id"))
-        for msg in messages
-        if isinstance(msg, dict) and msg.get("tool_call_id")
-    }
-    for call_id in [key for key in refs if key not in live]:
-        del refs[call_id]
 
 
 def process_tool_results(

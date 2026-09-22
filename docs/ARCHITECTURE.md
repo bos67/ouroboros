@@ -1,4 +1,4 @@
-# Ouroboros v6.119.10 — Architecture & Reference
+# Ouroboros v6.119.11 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -332,6 +332,8 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       │   ├── edit_ops.py ← Advanced repo editing: `apply_patch` (anchored multi-file), `edit_batch` (counted replacements)
       │   ├── edit_support.py ← Pure edit-recovery helpers: nearest-fragment/path hints for exact-miss refusals (6.118.2, stale-anchor class)
       │   ├── arg_recovery.py ← Bounded JSON-arg recovery at the parse seam (6.119.8): ordered wire repairs, single-candidate honesty gate + accepted-params ladder on parse refusals
+      │   ├── tool_arg_streak.py ← Task-scoped tool-arg degradation streak (6.119.11 extraction from loop_tool_execution): lazy counter on the tool ctx, increment/reset semantics, alert line riding the periodic self-check
+      │   ├── reclaim_bridge.py ← Per-task reclaim provenance accessors over the tool ctx (6.119.11 extraction from loop_tool_execution): trace refs, negative memo, post-reclaim prune
       │   ├── media.py ← Media tools: `ocr_pdf`, `youtube_transcript`, `extract_video_frames` (typed unavailable notices)
       │   ├── verify.py ← `verify_and_record`: HOST runs declared check, writes durable host-attested receipt (`verification_receipts.jsonl`, `contract_kind="delegation_zero_run"`, `ZERO_RUN_WRITE_DECISIONS`)
       │   ├── review_helpers.py ← Shared review helpers (packs via the review_pack_files leaf, preflight, intent, checklist, calibration blobs)
@@ -966,7 +968,7 @@ Disclosed cancel-lifecycle residuals (deliberately not fixed): a cascade over a 
 
 ### Tool capability and execution
 
-`tool_capabilities.py` is the SSOT for core/meta/parallel-safe/stateful-browser/untruncated/capped-result/reviewed-mutative tool classes; `tool_policy.py` picks the initial capability set; `ToolRegistry` stays the execution authority; `loop_tool_execution.py` owns timeouts, concurrency, live evidence, result handling, and mutative ceilings.
+`tool_capabilities.py` is the SSOT for core/meta/parallel-safe/stateful-browser/untruncated/capped-result/reviewed-mutative tool classes; `tool_policy.py` picks the initial capability set; `ToolRegistry` stays the execution authority; `loop_tool_execution.py` owns timeouts, concurrency, live evidence, result handling, and mutative ceilings. The tool-arg degradation streak and the reclaim provenance accessors live in their own leaves (`tools/tool_arg_streak.py`, `tools/reclaim_bridge.py`, 6.119.11 GIANT_PATHS closure — the donor dropped below the 1600-line gate); the donor re-exports them one-release for `loop.py`'s existing import surface.
 
 - Presets share one built-in name surface; project focus, root policy, runtime mode, task-contract disables, credentials, resources, repair rules, and delegated-child profiles narrow independently — a registered/discoverable tool is not the same as one callable for a target.
 - Lazy capability discovery returns an explicit omission or `CAPABILITY_UNAVAILABLE`, never a silent disappearance. `enable_tools` answers a REGISTERED tool with "hidden by policy: <reason>" (`ToolRegistry.policy_hidden_reason`, same predicates/order as `get_schema_by_name`), never "Not found"; the contract-disabled check precedes registration.

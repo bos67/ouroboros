@@ -40,7 +40,7 @@ def test_process_tool_results_accumulates_trace_refs_for_reclaim():
     exposes exactly that mapping to compact_tool_history_llm."""
     from types import SimpleNamespace
 
-    from ouroboros.loop_tool_execution import reclaim_trace_refs
+    from ouroboros.tools.reclaim_bridge import reclaim_trace_refs
 
     trace_ref = {"manifest_ref": {"path": "calls/tool.json", "sha256": "b" * 64}}
     tools = SimpleNamespace(_ctx=SimpleNamespace())
@@ -73,7 +73,7 @@ def test_prune_reclaim_trace_refs_drops_ids_absent_from_transcript():
     instead of growing for the task lifetime (S1 N-2)."""
     from types import SimpleNamespace
 
-    from ouroboros.loop_tool_execution import prune_reclaim_trace_refs, reclaim_trace_refs
+    from ouroboros.tools.reclaim_bridge import prune_reclaim_trace_refs, reclaim_trace_refs
 
     ctx = SimpleNamespace(_tool_trace_refs={
         f"call-{i}": {"manifest_ref": {"path": f"calls/{i}.json", "sha256": "c" * 64}}

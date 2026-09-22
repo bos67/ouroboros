@@ -24,10 +24,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from ouroboros.loop_tool_execution import (
     _accepted_params_note,
     _execute_single_tool,
-    _tool_arg_streak,
-    _update_tool_arg_streak,
     process_tool_results,
+)
+from ouroboros.tools.tool_arg_streak import (
+    tool_arg_streak as _tool_arg_streak,
     tool_arg_streak_alert_line,
+    update_tool_arg_streak as _update_tool_arg_streak,
 )
 from ouroboros.tools.arg_recovery import recover_tool_arguments
 
@@ -252,12 +254,11 @@ def test_alert_food_threshold_and_boundary(tmp_path):
     tools = _fake_registry(None)
     ctx = tools._ctx
     assert tool_arg_streak_alert_line(ctx) == ""
-    import ouroboros.loop_tool_execution as lte
 
     streak = _tool_arg_streak(ctx)
     for _ in range(3):
         _update_tool_arg_streak(ctx, streak, "run_command", {"status": "arg_error"})
-    alert = lte.tool_arg_streak_alert_line(ctx)
+    alert = tool_arg_streak_alert_line(ctx)
     assert "3 consecutive" in alert
     assert "run_command" in alert
     assert "TOOL-ARG DEGRADATION ALERT" in alert
