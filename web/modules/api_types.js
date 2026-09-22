@@ -1210,4 +1210,4 @@ export const MAX_QUIZ_OPTIONS = 6;
 // REFUSES a longer comment (it is delivered verbatim, never truncated), so
 // the card must not offer to send one.
 export const MAX_DECISION_COMMENT = 2000;
-export const GATEWAY_CONTRACT_VERSION = '6.119.9';
+export const GATEWAY_CONTRACT_VERSION = '6.119.10';

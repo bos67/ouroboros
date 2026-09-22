@@ -4,8 +4,6 @@ Pins the spec semantics:
 1) Repair only on ONE clean unique reparse to a dict (ambiguity/off-shape refuse).
 2) Parse-refusal error text carries the accepted-params ladder from the
    registry SSOT accessor (fail-soft: none -> no line).
-3) Typed arg noise status for the parse-refusal path.
-
 3) Typed arg_error status for the parse-refusal path; the streak counter
    increments ONLY on typed arg_error outcomes; resets on success (a
    non-arg-error FAILURE - e.g. a timeout - is neutral: neither increment
