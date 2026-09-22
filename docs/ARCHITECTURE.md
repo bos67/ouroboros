@@ -1,4 +1,4 @@
-# Ouroboros v6.119.11 — Architecture & Reference
+# Ouroboros v6.119.12 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -83,7 +83,7 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       ├── acceptance_dialogue.py ← Acceptance obligations/dialogue/decision machinery (from `loop.py`): `ACCEPTANCE_DECISION_REASONS`, `_set_acceptance_decision`, paid identity (`acceptance_paid_identity`)
       ├── loop_llm_call.py ← Single-round LLM call + usage accounting
       ├── delivery_protocol.py ← Delivery-finalization protocol vocabulary + pure parsers
-      ├── task_pacing.py ← Task-pacing SSOT: deadlines, finalization reserve, BudgetSnapshot, acceptance rails
+      ├── task_pacing.py ← Task-pacing SSOT: deadlines, finalization reserve, BudgetSnapshot, acceptance rails; the periodic self-check reminder scaffold lives here (6.119.12 relocation from loop.py, shrink-authority)
       ├── vision_routing.py ← Send-time image routing SSOT (`OUROBOROS_IMAGE_INPUT_MODE`, `OUROBOROS_MODEL_VISION`)
       ├── fallback_cooldown.py ← Per-process 429-aware cooldown for `OUROBOROS_MODEL_FALLBACKS`
       ├── model_concurrency.py ← Per-(model,use_local) semaphore capping CONCURRENT provider calls

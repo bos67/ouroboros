@@ -2076,26 +2076,18 @@ def _maybe_inject_self_check(
         )
 
     tool_trace = _build_recent_tool_trace(messages)
-    reminder = (
-        f"[CHECKPOINT {checkpoint_num} — round {round_idx}/{max_rounds}]\n"
-        f"Context: ~{ctx_tokens} tokens | Cost so far: {cost_text} | "
-        f"Rounds remaining: {max_rounds - round_idx}\n"
-        f"{tree_line}"
-    )
-    if tool_trace:
-        reminder += f"\n{tool_trace}\n"
-    if arg_alert:
-        reminder += arg_alert
-    reminder += (
-        "\nThis is a periodic self-check, not a command to stop. "
-        "Glance at your recent tool-call trace above and briefly consider:\n"
-        "- Are you still making progress toward the task, or repeating the same actions?\n"
-        "- Is the current approach still the right one, or should you narrow scope / try a different angle?\n"
-        "- If you are waiting on a long build/download/training run or have independent branches of investigation, consider schedule_subagent for a focused parallel handoff.\n"
-        "- If the task is effectively done, first re-check the literal original requirements one by one "
-        "against the specified interface/path/format/service, then wrap up by replying with your final answer in plain text (no tool call). "
-        "Otherwise continue with the most valuable next step.\n"
-        "\nNo special format required — just think, then act."
+    # Reminder text: task_pacing SSOT (6.119.12) — moved verbatim to keep
+    # loop.py below its recorded byte debt; the scaffold is a pacing-note
+    # sibling, the stateful inputs stay here.
+    reminder = task_pacing.build_self_check_reminder(
+        checkpoint_num=checkpoint_num,
+        round_idx=round_idx,
+        max_rounds=max_rounds,
+        ctx_tokens=ctx_tokens,
+        cost_text=cost_text,
+        tree_line=tree_line,
+        tool_trace=tool_trace,
+        arg_alert=arg_alert,
     )
 
     # Merge into a prior user turn to avoid Anthropic consecutive-role 400s,

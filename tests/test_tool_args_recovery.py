@@ -26,13 +26,14 @@ from ouroboros.loop_tool_execution import (
     _execute_single_tool,
     process_tool_results,
 )
+from ouroboros.tools.arg_recovery import recover_tool_arguments
 from ouroboros.tools.tool_arg_streak import (
     tool_arg_streak as _tool_arg_streak,
-    tool_arg_streak_alert_line,
+)
+from ouroboros.tools.tool_arg_streak import tool_arg_streak_alert_line
+from ouroboros.tools.tool_arg_streak import (
     update_tool_arg_streak as _update_tool_arg_streak,
 )
-from ouroboros.tools.arg_recovery import recover_tool_arguments
-
 
 # ---------------------------------------------------------------------------
 # recover_tool_arguments

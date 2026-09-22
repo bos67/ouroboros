@@ -36,9 +36,17 @@ from ouroboros.tool_capabilities import (
 from ouroboros.tool_capabilities import (
     tool_result_limit as _tool_result_limit,
 )
+from ouroboros.tools.reclaim_bridge import (  # noqa: F401 - re-export plane (loop.py imports these here)
+    prune_reclaim_trace_refs,
+    reclaim_negative_memo,
+    reclaim_trace_refs,
+)
 from ouroboros.tools.registry import ToolRegistry
 from ouroboros.tools.result_envelope import result_payload_text, typed_result_meta
 from ouroboros.tools.review_synthesis import PLAN_REVIEW_CONTROL_PREFIX
+from ouroboros.tools.tool_arg_streak import tool_arg_streak as _tool_arg_streak
+from ouroboros.tools.tool_arg_streak import tool_arg_streak_alert_line  # noqa: F401
+from ouroboros.tools.tool_arg_streak import update_tool_arg_streak as _update_tool_arg_streak
 from ouroboros.usage_accounting import UsageAccountingError
 from ouroboros.utils import (
     append_jsonl,
@@ -50,8 +58,6 @@ from ouroboros.utils import (
     truncate_review_artifact,
     utc_now_iso,
 )
-from ouroboros.tools.reclaim_bridge import prune_reclaim_trace_refs, reclaim_negative_memo, reclaim_trace_refs  # noqa: F401 - re-export plane (loop.py imports these here)
-from ouroboros.tools.tool_arg_streak import tool_arg_streak_alert_line, tool_arg_streak as _tool_arg_streak, update_tool_arg_streak as _update_tool_arg_streak  # noqa: F401
 
 log = logging.getLogger(__name__)
 

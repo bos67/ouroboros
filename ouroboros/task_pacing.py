@@ -978,3 +978,50 @@ def build_intrinsic_pacing_note(
         checkpoint["tree_accounted_usd"] = round(tree_accounted, 4)
         checkpoint["tree_cap_usd"] = round(tree_cap, 4) if tree_cap is not None else None
     return PacingNote(text=text, checkpoint=checkpoint)
+
+
+def build_self_check_reminder(
+    *,
+    checkpoint_num: int,
+    round_idx: int,
+    max_rounds: int,
+    ctx_tokens: int,
+    cost_text: str,
+    tree_line: str,
+    tool_trace: str,
+    arg_alert: str,
+) -> str:
+    """Assemble the periodic self-check user-turn reminder text (6.119.12).
+
+    Moved from ``ouroboros/loop.py`` (shrunk below its recorded byte debt so
+    the manifest transition stays legal): the static scaffold of the
+    checkpoint reminder is pacing-text SSOT — sibling of ``build_time_budget_note``
+    and the intrinsic pacing note — while loop.py keeps the stateful decisions
+    (round gating, tree accounting, arg-streak alert) and passes them in.
+    Byte-for-byte the same product as the inline original: f-strings below
+    reproduce the exact concatenation, ``tool_trace`` and ``arg_alert`` arrive
+    pre-built (empty string when absent), so below-threshold turns stay
+    byte-identical with today's reminders.
+    """
+    reminder = (
+        f"[CHECKPOINT {checkpoint_num} — round {round_idx}/{max_rounds}]\n"
+        f"Context: ~{ctx_tokens} tokens | Cost so far: {cost_text} | "
+        f"Rounds remaining: {max_rounds - round_idx}\n"
+        f"{tree_line}"
+    )
+    if tool_trace:
+        reminder += f"\n{tool_trace}\n"
+    if arg_alert:
+        reminder += arg_alert
+    reminder += (
+        "\nThis is a periodic self-check, not a command to stop. "
+        "Glance at your recent tool-call trace above and briefly consider:\n"
+        "- Are you still making progress toward the task, or repeating the same actions?\n"
+        "- Is the current approach still the right one, or should you narrow scope / try a different angle?\n"
+        "- If you are waiting on a long build/download/training run or have independent branches of investigation, consider schedule_subagent for a focused parallel handoff.\n"
+        "- If the task is effectively done, first re-check the literal original requirements one by one "
+        "against the specified interface/path/format/service, then wrap up by replying with your final answer in plain text (no tool call). "
+        "Otherwise continue with the most valuable next step.\n"
+        "\nNo special format required — just think, then act."
+    )
+    return reminder
