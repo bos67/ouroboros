@@ -33,6 +33,7 @@ _BLOCKING_TOOL_STATUSES = frozenset({
     "integration_blocked",
     "light_mode_blocked",
     "non_zero_exit",
+    "arg_error",  # 6.119.9 — typed arg wire/parse refusal family (⚠️ TOOL_ARG_ERROR prefix); counted by the task-scoped streak (reset on success)
     "protected_blocked",
     "resource_constraint_blocked",
     "resource_policy_blocked",

@@ -19,6 +19,12 @@ Pinned rules:
       recover to ``{}`` (kind ``empty_args``). The empty wire is a legal
       argument shape; the registry's own param validation then answers
       with the accepted-params fact if the tool required more.
+
+  Kind vocabulary (honest types on ``result_meta["arg_wire_repaired"]``):
+      "empty_args"  — R1 empty/null wire recovered to {};
+      "balanced_prefix" — R2 truncation repair consumed ONE candidate;
+      "parsed"      — caller parse failed but the text itself was valid
+                      JSON: dispatched as-is, nothing repaired.
   R2  bounded structural truncation repair (kind ``balanced_prefix``),
       in priority order and AT MOST ONE candidate consumed:
         a) end-cut — when the tail after the last clean ``key: value,``
@@ -124,8 +130,10 @@ def recover_tool_arguments(raw: Any) -> Tuple[Dict[str, Any], str]:
     parsed = _reparse_to_dict(stripped)
     if parsed is not None:
         # Caller-side json.loads normally catches this first; a dict that
-        # parses here is simply valid — no repair needed.
-        return parsed, "empty_args"
+        # parses here is simply valid — no repair happened; kind "parsed"
+        # states exactly that ("", not "empty_args" — the wire was neither
+        # empty nor repaired, and the recovery fact must not misname it).
+        return parsed, "parsed"
 
     boundaries = _boundaries_with_stack(stripped)
     # (a) end-cut: the tail after the LAST boundary has no unterminated

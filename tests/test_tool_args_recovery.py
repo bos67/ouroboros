@@ -4,9 +4,12 @@ Pins the spec semantics:
 1) Repair only on ONE clean unique reparse to a dict (ambiguity/off-shape refuse).
 2) Parse-refusal error text carries the accepted-params ladder from the
    registry SSOT accessor (fail-soft: none -> no line).
-3) Typed arg_error status for the parse-refusal path; counter increments ONLY
-   on typed arg_error outcomes, resets on any non-arg-error outcome; alert
-   text at >=3 rides ONLY the self-check seam.
+3) Typed arg noise status for the parse-refusal path.
+
+3) Typed arg_error status for the parse-refusal path; the streak counter
+   increments ONLY on typed arg_error outcomes; resets on success (a
+   non-arg-error FAILURE - e.g. a timeout - is neutral: neither increment
+   nor reset); the >=3 alert rides ONLY the self-check seam.
 4) Alert tool list bounded to last 5 unique names in first-seen order.
 """
 
@@ -62,15 +65,21 @@ def test_recover_truncated_json_at_last_pair_boundary():
     } and kind == "balanced_prefix"
 
     # Truncated INSIDE the backup-path string (unterminated tail): the
-    # END-cut path fails; the boundary-cut drops the incomplete pair.
+    # end-cut path is refused by design (the surviving tail belongs to an
+    # unterminated string — closers alone cannot complete it), so the
+    # boundary-cut drops the incomplete pair and closes the still-open
+    # container — exactly the (b) branch's seeded lesson from the
+    # 6.119.8 advisory.
     raw = ('{"cmd": ["python", "-c"], "backup_path": "/tmp/x.p')
     args, kind = recover_tool_arguments(raw)
     assert args == {"cmd": ["python", "-c"]} and kind == "balanced_prefix"
 
 
 def test_recover_refuses_non_dict_and_nested_ambiguity_is_resolved():
-    # Nested mid-string cut: the end-cut is the unique least-lossy repair
-    # (closes the inner dict then the list) — recovers, does not refuse.
+    # Nested mid-string cut: the repair drops the incomplete inner pair at
+    # the last clean boundary ("1,") and closes only the still-open list —
+    # "closes the inner dict" would be wrong ({"c": … is never completed);
+    # recovers, does not refuse.
     args, kind = recover_tool_arguments('{"a": "x", "b": [1, {"c": "y')
     assert args == {"a": "x", "b": [1]} and kind == "balanced_prefix"
     # Lists and bare strings never recover — the args must be a dict.
@@ -82,7 +91,9 @@ def test_recover_refuses_non_dict_and_nested_ambiguity_is_resolved():
 
 def test_recover_returns_valid_json_untouched():
     args, kind = recover_tool_arguments('{"x": 1}')
-    assert args == {"x": 1} and kind == "empty_args"
+    # Valid JSON that the caller failed to parse: dispatched as-is, nothing
+    # repaired — the honest kind names the no-repair fact (6.119.9).
+    assert args == {"x": 1} and kind == "parsed"
 
 
 # ---------------------------------------------------------------------------
@@ -207,13 +218,15 @@ def test_process_tool_results_streak_increment_and_success_reset(tmp_path):
     messages = []
     llm_trace = {"tool_calls": []}
 
-    def _run(result_meta_status):
+    def _run(result_meta_status, is_error=None):
+        if is_error is None:
+            is_error = result_meta_status == "arg_error"
         return process_tool_results(
             [{
                 "tool_call_id": "c",
                 "fn_name": "run_command",
                 "result": "⚠️ TOOL_ARG_ERROR: x",
-                "is_error": result_meta_status == "arg_error",
+                "is_error": is_error,
                 "tool_args": {},
                 "args_for_log": {},
                 "is_code_tool": False,
@@ -229,8 +242,12 @@ def test_process_tool_results_streak_increment_and_success_reset(tmp_path):
     _run("ok")
     assert _tool_arg_streak(tools._ctx)["count"] == 0
     _run("arg_error")
-    _run("timeout")     # timeout is also a non-arg-error outcome → resets
-    assert _tool_arg_streak(tools._ctx)["count"] == 0
+    # A REAL timeout arrives as an error whose status is not arg_error:
+    # neutral — neither increment nor reset (pinned with is_error=True;
+    # the old is_error=False modeling reset the counter and proved nothing
+    # about the actual path — 6.119.8 triad advisory).
+    _run("timeout", is_error=True)
+    assert _tool_arg_streak(tools._ctx)["count"] == 1
 
 
 def test_alert_food_threshold_and_boundary(tmp_path):

@@ -1514,10 +1514,16 @@ def process_tool_results(
         fn_name = exec_result["fn_name"]
         is_error = exec_result["is_error"]
         if is_error:
-            _update_tool_arg_streak(tool_ctx, arg_streak, fn_name, exec_result.get("result_meta") or {})
+            result_meta_raw = exec_result.get("result_meta") or {}
+            if not isinstance(result_meta_raw, dict):
+                result_meta_raw = {}
+            _update_tool_arg_streak(
+                tool_ctx, arg_streak, fn_name, result_meta_raw,
+            )
         elif arg_streak["count"]:
-            # Any non-arg-error outcome resets the streak: honest recovery
-            # credit — the counter measures only the arg-error degradation.
+            # A non-error OUTCOME resets the streak (honest recovery credit);
+            # a non-arg-error FAILURE (timeout) is neutral — neither increment
+            # nor reset — so the counter measures only the arg-error class.
             arg_streak["count"] = 0
             arg_streak["tools"].clear()
 
