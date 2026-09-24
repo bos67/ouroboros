@@ -235,3 +235,31 @@ def test_preflight_refusal_still_precedes_dispatch_after_move(tmp_path, fake_sub
     result = _run_shell(_ctx(tmp_path), ["sh", "c", "true"], cwd=str(tmp_path))
     assert "SHELL_PREFLIGHT" in result
     assert calls == []  # nothing executed — refusal precedes dispatch
+
+
+def test_preflight_hint_resolves_selector_cwd_spelling(tmp_path, fake_subprocess, monkeypatch):
+    # 6.119.17 post-gate advisory (glm, changelog_accuracy): an absolute-cwd
+    # spy test can pass unchanged against the pre-fix code, so it does not pin
+    # the selector-spelling seam this release actually moved. This variant
+    # passes cwd as the SELECTOR spelling `task_drive`; the binding layer
+    # resolves it to <drive_root>/task_drives/<task_id>, so the audit must
+    # receive that absolute dir — never the raw selector string, and never
+    # the repo_dir fallback (both pre-fix behaviors).
+    import ouroboros.tools.shell_preflight as pf
+
+    captured: list[str] = []
+
+    def spy(cmd, cwd=None):
+        captured.append(str(cwd))
+        return True, ""
+
+    monkeypatch.setattr(pf, "preflight_argv", spy)
+    calls = fake_subprocess(stdout="ok")
+    result = _run_shell(_ctx(tmp_path), ["sh", "-c", "true"], cwd="task_drive")
+    assert "SHELL_PREFLIGHT" not in result
+    assert captured, "audit was not consulted at all"
+    hint = captured[0]
+    assert not hint.endswith("task_drive"), "raw selector spelling leaked into the hint"
+    assert hint.startswith(str(tmp_path)), f"hint {hint} did not resolve under the ctx drive root"
+    assert "task_drives" in hint, f"hint {hint} is not a resolved task_drive target"
+    assert calls, "healthy selector-cwd dispatch must still run the command"
