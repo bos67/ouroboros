@@ -1016,13 +1016,18 @@ def _run_shell(
     cmd, autocorrect_note = _maybe_autocorrect_grep_backslash_pipe(cmd)
     autocorrect_note += _literal_argv_notes(cmd)
 
-    # p1 pre-exec audit (2026-09-24): lost-flag argv and malformed sh -c bodies
+    # P1 pre-exec audit (2026-09-24): lost-flag argv and malformed sh -c bodies
     # are caught by shell_preflight (leaf module, own tests) BEFORE any
-    # subprocess side effect; healthy commands are never touched.
+    # subprocess side effect; healthy commands are never touched. The cwd
+    # hint (explicit cwd or the repo default) steers the M1 script-path
+    # discriminator (6.119.16): a bare token that is a real file in the run
+    # dir is a script path, never a lost-flag refusal.
     try:
         from ouroboros.tools.shell_preflight import preflight_argv
 
-        _pf_ok, _pf_msg = preflight_argv(cmd)
+        _pf_ok, _pf_msg = preflight_argv(
+            cmd, cwd=str(cwd or getattr(ctx, "repo_dir", "") or "")
+        )
         if not _pf_ok:
             return (
                 '⚠️ SHELL_PREFLIGHT: the command was refused BEFORE execution — '

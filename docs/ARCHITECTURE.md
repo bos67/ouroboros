@@ -1,4 +1,4 @@
-# Ouroboros v6.119.15 — Architecture & Reference
+# Ouroboros v6.119.16 — Architecture & Reference
 
 This file is NOT a changelog. Version history lives in README.md, git tags, and commit log.
 
@@ -256,6 +256,7 @@ server.py (Starlette+uvicorn) ← HTTP + WebSocket on configurable host:port (de
       ├── tools/owner_delivery.py ← Live-first owner-chat delivery seam for send family (never both rails)
       ├── tools/deliverables_shell.py ← Direct cp/mv/ln Deliverables target + symlink checks
       ├── tools/shell_audit.py ← Post-execution user_files/Deliverables custody audit
+      ├── tools/shell_preflight.py ← Pre-exec shell audit leaf (M1 lost-flag argv + M2 no-exec -c body pre-parse, 6.119.15; script-path discriminator 6.119.16)
       ├── tools/process_facts.py ← Typed process-facts seam (exit_code, signal, duration)
       ├── tools/write_shape.py ← Write-shape classification SSOT (interpreter/non-interpreter + pure-filter evidence)
       ├── skill_payload_binding.py ← Exact payload binding projection (`.seed-origin`, logical `external`)
@@ -968,7 +969,7 @@ Disclosed cancel-lifecycle residuals (deliberately not fixed): a cascade over a 
 
 ### Tool capability and execution
 
-`tool_capabilities.py` is the SSOT for core/meta/parallel-safe/stateful-browser/untruncated/capped-result/reviewed-mutative tool classes; `tool_policy.py` picks the initial capability set; `ToolRegistry` stays the execution authority; `loop_tool_execution.py` owns timeouts, concurrency, live evidence, result handling, and mutative ceilings. The tool-arg degradation streak and the reclaim provenance accessors live in their own leaves (`tools/tool_arg_streak.py`, `tools/reclaim_bridge.py`, 6.119.11 GIANT_PATHS closure — the donor dropped below the 1600-line gate); the donor re-exports them one-release for `loop.py`'s existing import surface.
+`tool_capabilities.py` is the SSOT for core/meta/parallel-safe/stateful-browser/untruncated/capped-result/reviewed-mutative tool classes; `tool_policy.py` picks the initial capability set; `ToolRegistry` stays the execution authority; `loop_tool_execution.py` owns timeouts, concurrency, live evidence, result handling, and mutative ceilings. Pre-execution, `run_command` argv passes the shell audit (`tools/shell_preflight.py`, 6.119.15): lost-flag interpreter adjacency (`["sh","c",...]`) is refused naming the exact fix — a bare token that exists as a file in the eventual run cwd is a script path and passes (discriminator, 6.119.16) — and `sh|bash -c` bodies are pre-parsed no-exec by the same interpreter that would run them; a missing or slow checker passes through. The tool-arg degradation streak and the reclaim provenance accessors live in their own leaves (`tools/tool_arg_streak.py`, `tools/reclaim_bridge.py`, 6.119.11 GIANT_PATHS closure — the donor dropped below the 1600-line gate); the donor re-exports them one-release for `loop.py`'s existing import surface.
 
 - Presets share one built-in name surface; project focus, root policy, runtime mode, task-contract disables, credentials, resources, repair rules, and delegated-child profiles narrow independently — a registered/discoverable tool is not the same as one callable for a target.
 - Lazy capability discovery returns an explicit omission or `CAPABILITY_UNAVAILABLE`, never a silent disappearance. `enable_tools` answers a REGISTERED tool with "hidden by policy: <reason>" (`ToolRegistry.policy_hidden_reason`, same predicates/order as `get_schema_by_name`), never "Not found"; the contract-disabled check precedes registration.

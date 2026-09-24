@@ -7,7 +7,10 @@ see artifact ``p1_baseline_report.md``):
 - **M1 argv audit** — lost-flag argv such as ``["sh","c","true"]`` passes
   every existing guard and dies only at exec with the cryptic
   ``sh: cannot open c`` (incident 2026-09-23T05:49). A deterministic
-  adjacency check refuses pre-exec naming the exact fix.
+  adjacency check refuses pre-exec naming the exact fix; an ambiguity
+  discriminator (6.119.16) keeps script-path argv healthy — a bare suspect
+  token that EXISTS as a file in the eventual run cwd is a script path, so
+  only a both-miss is refused.
 - **M2 -c body parse** — a malformed compound ``sh -c 'a; b; …'`` body
   (unescaped parens, bash-only ``<(cmd)`` under sh) executes every command
   BEFORE the syntax error (incident 2026-09-24T08:04; 2026-09-21T15:53
@@ -28,6 +31,7 @@ are never touched.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 
 # Adjacent argv pairs → the dash the pair almost certainly lost. The dict
@@ -46,16 +50,34 @@ _SUSPECT_FLAG_ADJACENCIES = {
 _SHELL_INTERPRETERS = ("sh", "bash", "zsh", "dash")
 
 
-def _suspect_argv_findings(cmd: list[str]) -> list[str]:
+def _token_is_real_file(token: str, cwd: str | None) -> bool:
+    """Ambiguity-safe discriminator (6.119.16, luna advisory on 6.119.15):
+    ``["sh","c"]`` where ``c`` is an EXISTING file is a script-path
+    invocation, not a lost dash — never refuse a healthy script path. The
+    token is resolved against the eventual run cwd (explicit ``cwd`` or the
+    caller default) and the process cwd; a miss on both is exactly the exec
+    death M1 diagnoses, so only that is refused."""
+    tok = str(token)
+    if os.path.isabs(tok):
+        return os.path.isfile(tok)
+    candidates = []
+    if cwd:
+        candidates.append(os.path.join(str(cwd), tok))
+    candidates.append(os.path.join(os.getcwd(), tok))
+    return any(os.path.isfile(c) for c in candidates)
+
+
+def _suspect_argv_findings(cmd: list[str], cwd: str | None = None) -> list[str]:
     """Lost-flag audit: interpreter immediately followed by its bare flag
-    (``["sh","c","true"]`` → intended ``["sh","-c","true"]``)."""
+    (``["sh","c","true"]`` → intended ``["sh","-c","true"]``). A suspect
+    token that exists as a real file is a script path and passes."""
     findings = []
     for i, tok in enumerate(cmd[:4]):
         flags = _SUSPECT_FLAG_ADJACENCIES.get(str(tok))
         if not flags:
             continue
         nxt = str(cmd[i + 1]) if i + 1 < len(cmd) else ""
-        if nxt in flags:
+        if nxt in flags and not _token_is_real_file(nxt, cwd):
             findings.append(
                 f"'{tok}' is followed by bare '{nxt}' ('{tok} {nxt} …'), which the OS "
                 f"parses as a FILE PATH — the flag lost its dash. Correct: "
@@ -86,10 +108,12 @@ def _noexec_parse(interp: str, body: str) -> tuple[int, str]:
         return 0, ""
 
 
-def preflight_argv(cmd: list[str]) -> tuple[bool, str]:
-    """M1+M2 pre-exec audit for run_command argv. Returns (healthy, message)."""
+def preflight_argv(cmd: list[str], cwd: str | None = None) -> tuple[bool, str]:
+    """M1+M2 pre-exec audit for run_command argv. ``cwd`` is the eventual
+    run-directory hint (explicit cwd or the caller's default) steering the
+    M1 script-path discriminator. Returns (healthy, message)."""
     argv = [str(t) for t in cmd]
-    findings = _suspect_argv_findings(argv)
+    findings = _suspect_argv_findings(argv, cwd)
     interp = _should_parse_body(argv)
     if interp is not None:
         parse_rc, diag = _noexec_parse(interp, argv[2])
