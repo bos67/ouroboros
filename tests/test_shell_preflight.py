@@ -200,3 +200,38 @@ def test_run_shell_healthy_direct_argv_still_runs(tmp_path, fake_subprocess):
     result = _run_shell(_ctx(tmp_path), ["printf", "x"])
     assert "exit_code=0" in result
     assert "SHELL_PREFLIGHT" not in result
+
+
+# ---------------------------------------------------------------------------
+# 6.119.17: the audit hint is the RESOLVED run dir, not the raw cwd string
+# ---------------------------------------------------------------------------
+
+
+def test_preflight_hint_is_resolved_binding_dir(tmp_path, fake_subprocess, monkeypatch):
+    # 6.119.17 triad residual: the audit must receive binding.target_path —
+    # the directory the command will actually run in — never the raw `cwd`
+    # argument (which may be a selector spelling or empty).
+    import ouroboros.tools.shell_preflight as pf
+
+    captured: list[str] = []
+
+    def spy(cmd, cwd=None):
+        captured.append(cwd)
+        return True, ""
+
+    monkeypatch.setattr(pf, "preflight_argv", spy)
+    fake_subprocess(stdout="ok")
+    result = _run_shell(_ctx(tmp_path), ["sh", "-c", "true"], cwd=str(tmp_path))
+    assert "SHELL_PREFLIGHT" not in result
+    assert captured, "audit was not consulted at all"
+    assert captured[0] == str(tmp_path)  # resolved dir, not the raw spelling
+
+
+def test_preflight_refusal_still_precedes_dispatch_after_move(tmp_path, fake_subprocess):
+    # Ordering pin after the 6.119.17 move: the audit block now sits below
+    # binding resolution, but a refusal still fires strictly before any
+    # subprocess dispatch (binding resolution is process-free).
+    calls = fake_subprocess(stdout="ok")
+    result = _run_shell(_ctx(tmp_path), ["sh", "c", "true"], cwd=str(tmp_path))
+    assert "SHELL_PREFLIGHT" in result
+    assert calls == []  # nothing executed — refusal precedes dispatch
