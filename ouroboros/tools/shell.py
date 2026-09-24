@@ -1016,6 +1016,22 @@ def _run_shell(
     cmd, autocorrect_note = _maybe_autocorrect_grep_backslash_pipe(cmd)
     autocorrect_note += _literal_argv_notes(cmd)
 
+    # p1 pre-exec audit (2026-09-24): lost-flag argv and malformed sh -c bodies
+    # are caught by shell_preflight (leaf module, own tests) BEFORE any
+    # subprocess side effect; healthy commands are never touched.
+    try:
+        from ouroboros.tools.shell_preflight import preflight_argv
+
+        _pf_ok, _pf_msg = preflight_argv(cmd)
+        if not _pf_ok:
+            return (
+                '⚠️ SHELL_PREFLIGHT: the command was refused BEFORE execution — '
+                'nothing ran.\n\n' + _pf_msg +
+                '\n\nFix the call and rerun; this refusal is deterministic.'
+            )
+    except Exception:
+        pass  # a broken checker must never become the failure mode
+
     try:
         binding = _resolved_binding or build_resolved_resource_binding(
             ctx, operation="shell", process_cwd=cwd, bucket=bucket, skill_name=skill_name,
